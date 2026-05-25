@@ -1,0 +1,22 @@
+{
+  "magic": "0xDEADBEEF",
+  "note": "must be rejected by server",
+  "bytes": [
+    222,
+    173,
+    190,
+    239,
+    0,
+    0,
+    0,
+    2,
+    0,
+    0,
+    4,
+    210,
+    3,
+    0,
+    0,
+    0
+  ]
+}

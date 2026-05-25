@@ -1,0 +1,13 @@
+{
+  "payload_length": 16777217,
+  "note": "exceeds 16MiB cap, must trigger ERR_PROTOCOL_VIOLATION (403)",
+  "header_only": true,
+  "bytes": [
+    1,
+    0,
+    0,
+    1,
+    1,
+    0
+  ]
+}
