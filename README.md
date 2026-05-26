@@ -1,26 +1,37 @@
 # yuumi-spec
 
-> Authoritative wire protocol specification for Yuumi IPC.
+> Canonical protocol repository for the Yuumi ecosystem.
 
-## What this repo is
+This repository is the source of truth for the wire protocol used by all Yuumi SDKs.
+It intentionally contains protocol documentation and conformance vectors only.
 
-This repository defines **the protocol** — not any implementation.
-Every language SDK must conform to [`PROTOCOL.md`](./PROTOCOL.md).
+## Specification
 
-## Implementations
+- Protocol document: [`PROTOCOL.md`](./PROTOCOL.md)
+- Canonical binary vectors: [`test-vectors/`](./test-vectors/)
 
-| Language | Repo | Status |
+Any implementation in any language must conform to these artifacts.
+
+## SDK repositories
+
+| Language | Repository | Install |
 |---|---|---|
-| Go | [yuumi-go](https://github.com/ilmartotch/yuumi-go) | ✅ stable |
-| C++ | [yuumi-cpp](https://github.com/ilmartotch/yuumi-cpp) | ✅ stable |
-| Rust | yuumi-rs | 🔜 planned |
+| Go (client / TUI side) | [yuumi](https://github.com/YuumiConnectionLibrary/yuumi) | `go get github.com/YuumiConnectionLibrary/yuumi` |
+| C++ (server side) | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | CMake + vcpkg |
+| Python (planned) | `yuumi-py` | `pip install yuumi` |
+| Rust (planned) | `yuumi-rs` | `cargo add yuumi` |
 
-## Test vectors
+## Ecosystem direction
 
-[`test-vectors/`](./test-vectors/) contains canonical binary blobs with `.json` annotations
-for field-by-field validation. Use them to verify any new implementation.
+Yuumi is designed so that:
+
+- Go is the UI/client layer (for example Charm-based TUI apps).
+- Server business logic can run in the user's language of choice.
+- All pairings converge on the same transport semantics through one protocol.
+- Yuumi and Zeri are separate projects with no compatibility guarantees.
 
 ## Versioning
 
-Protocol version is a `uint32` embedded in the handshake.
-Current: **v2**. Changes that break wire compatibility increment this number.
+Protocol version is encoded in the handshake as `uint32`.
+Current protocol version: **2**.
+Breaking wire changes must increment the version and refresh test vectors.
