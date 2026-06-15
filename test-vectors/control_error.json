@@ -1,0 +1,14 @@
+{
+  "description": "ChannelControl frame carrying an error message (JSON). Sender must close connection after this.",
+  "fields": {
+    "payload_length": 57,
+    "channel": "0x00 (Control)",
+    "flags": "0x00",
+    "encoding": "JSON (always)",
+    "message": {
+      "type": "error",
+      "code": 403,
+      "message": "payload too large"
+    }
+  }
+}

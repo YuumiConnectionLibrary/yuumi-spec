@@ -1,0 +1,13 @@
+{
+  "description": "ChannelControl frame carrying a heartbeat message (JSON, Flags=0x00)",
+  "fields": {
+    "payload_length": 39,
+    "channel": "0x00 (Control)",
+    "flags": "0x00",
+    "encoding": "JSON (always, regardless of negotiated encoding)",
+    "message": {
+      "type": "heartbeat",
+      "ts": 1748558400000
+    }
+  }
+}

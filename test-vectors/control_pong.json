@@ -1,0 +1,13 @@
+{
+  "description": "ChannelControl frame carrying a pong message in response to ping seq=1.",
+  "fields": {
+    "payload_length": 23,
+    "channel": "0x00 (Control)",
+    "flags": "0x00",
+    "encoding": "JSON (always)",
+    "message": {
+      "type": "pong",
+      "seq": 1
+    }
+  }
+}

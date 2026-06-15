@@ -1,0 +1,11 @@
+{
+  "description": "Last fragment frame on ChannelControl, fragment_id=1. Reassembled payload: Hello World",
+  "fields": {
+    "payload_length": 10,
+    "channel": "0x00 (Control)",
+    "flags": "0x03 (FLAG_FRAGMENT | FLAG_LAST_FRAG)",
+    "fragment_id": 1,
+    "fragment_data": " World (ASCII)",
+    "reassembled_payload": "Hello World"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "First fragment frame on ChannelControl, fragment_id=1",
+  "fields": {
+    "payload_length": 9,
+    "channel": "0x00 (Control)",
+    "flags": "0x01 (FLAG_FRAGMENT)",
+    "fragment_id": 1,
+    "fragment_data": "Hello (ASCII)"
+  }
+}

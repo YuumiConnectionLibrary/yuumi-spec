@@ -4,6 +4,8 @@
 
 Yuumi is a lightweight wire protocol and SDK ecosystem that lets a Go frontend (TUI, CLI) communicate with a backend written in **any language** over a local Unix socket. This repository is the canonical source of truth: it contains the protocol specification and the conformance test vectors that all implementations must pass.
 
+> **Protocol freeze:** Protocol v2 is frozen. No breaking changes will be introduced for 12 months from the v2.final release date. New features will be additive only.
+
 ---
 
 ## Architecture
