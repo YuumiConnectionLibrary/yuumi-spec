@@ -1,0 +1,20 @@
+{
+  "description": "Encoding rejection case: the client offers MessagePack while the engine context supports JSON only.",
+  "context": {
+    "engine_encoding_caps": "0x01 (JSON)",
+    "intersection": "0x00"
+  },
+  "packet": {
+    "size_bytes": 16,
+    "byte_order": "Big-Endian",
+    "hex": "59554D4900000001000004D202000000",
+    "fields": [
+      { "name": "magic", "offset": 0, "size": 4, "value": "0x59554D49 (YUMI)" },
+      { "name": "protocol_version", "offset": 4, "size": 4, "value": 1 },
+      { "name": "pid", "offset": 8, "size": 4, "value": 1234 },
+      { "name": "encoding_caps", "offset": 12, "size": 1, "value": "0x02 (MessagePack)" },
+      { "name": "capabilities", "offset": 13, "size": 3, "value": "0x000000" }
+    ]
+  },
+  "expected": "Reject with ERR_ENCODING_UNSUPPORTED (415), close the connection, and send no ACK."
+}

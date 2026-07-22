@@ -1,14 +1,15 @@
 {
-  "description": "ChannelControl frame carrying an error message (JSON). Sender must close connection after this.",
-  "fields": {
-    "payload_length": 57,
-    "channel": "0x00 (Control)",
-    "flags": "0x00",
-    "encoding": "JSON (always)",
-    "message": {
-      "type": "error",
-      "code": 403,
-      "message": "payload too large"
-    }
-  }
+  "description": "JSON Control error for a payload-size violation.",
+  "packet": {
+    "size_bytes": 63,
+    "byte_order": "Big-Endian",
+    "hex": "0000003900007B2274797065223A226572726F72222C22636F6465223A3431332C226D657373616765223A227061796C6F616420746F6F206C61726765227D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 57 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x00 (Control)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 57, "value_utf8": "{\"type\":\"error\",\"code\":413,\"message\":\"payload too large\"}" }
+    ]
+  },
+  "expected": "Surface ERR_PAYLOAD_TOO_LARGE (413); the sender closes immediately after this frame and the receiver sends no more frames."
 }

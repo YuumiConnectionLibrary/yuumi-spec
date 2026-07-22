@@ -1,0 +1,16 @@
+{
+  "description": "First post-ACK Control frame assigning the engine-generated session identifier.",
+  "packet": {
+    "size_bytes": 52,
+    "byte_order": "Big-Endian",
+    "hex": "0000002E00007B2274797065223A2273657373696F6E222C2273657373696F6E5F6964223A2273657373696F6E2D30303031227D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 46 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x00 (Control)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 46, "value_utf8": "{\"type\":\"session\",\"session_id\":\"session-0001\"}" },
+      { "name": "session_id", "payload_path": "$.session_id", "value": "session-0001" }
+    ]
+  },
+  "expected": "Accept only immediately after ACK, store session_id as opaque state, and mark the session ready."
+}

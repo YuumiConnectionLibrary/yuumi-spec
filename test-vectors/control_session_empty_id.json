@@ -1,0 +1,16 @@
+{
+  "description": "Session assignment rejection case with an empty session_id.",
+  "packet": {
+    "size_bytes": 40,
+    "byte_order": "Big-Endian",
+    "hex": "0000002200007B2274797065223A2273657373696F6E222C2273657373696F6E5F6964223A22227D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 34 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x00 (Control)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 34, "value_utf8": "{\"type\":\"session\",\"session_id\":\"\"}" },
+      { "name": "session_id", "payload_path": "$.session_id", "value": "" }
+    ]
+  },
+  "expected": "Reject with ERR_PROTOCOL_VIOLATION (403) because session_id must be non-empty, and do not mark the session ready."
+}

@@ -1,32 +1,15 @@
 {
-  "payload_length": 18,
-  "channel": "0x01 (Command)",
-  "flags": "0x00",
-  "payload": "{\"action\": \"test\"}",
-  "bytes": [
-    0,
-    0,
-    0,
-    18,
-    1,
-    0,
-    123,
-    34,
-    97,
-    99,
-    116,
-    105,
-    111,
-    110,
-    34,
-    58,
-    32,
-    34,
-    116,
-    101,
-    115,
-    116,
-    34,
-    125
-  ]
+  "description": "Complete uncorrelated JSON command frame.",
+  "packet": {
+    "size_bytes": 24,
+    "byte_order": "Big-Endian",
+    "hex": "0000001201007B22616374696F6E223A202274657374227D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 18 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x01 (Command)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "data", "offset": 6, "size": 18, "value_utf8": "{\"action\": \"test\"}" }
+    ]
+  },
+  "expected": "Dispatch one fire-and-forget command with no prefix parsing."
 }

@@ -1,0 +1,20 @@
+{
+  "description": "Correlated JSON response repeating correlation_id 42.",
+  "context": {
+    "negotiated_capabilities": "0x000001 (CAP_CORRELATION)",
+    "pending_request": "frame_correlated_request.bin"
+  },
+  "packet": {
+    "size_bytes": 21,
+    "byte_order": "Big-Endian",
+    "hex": "0000000F03040000002A7B226F6B223A747275657D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 15 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x04 (FLAG_CORRELATED)" },
+      { "name": "correlation_id", "offset": 6, "size": 4, "value": 42 },
+      { "name": "data", "offset": 10, "size": 11, "value_utf8": "{\"ok\":true}" }
+    ]
+  },
+  "expected": "Resolve only the pending request with correlation_id 42."
+}

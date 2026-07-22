@@ -1,0 +1,17 @@
+{
+  "description": "Correlated JSON request with correlation_id 42.",
+  "context": { "negotiated_capabilities": "0x000001 (CAP_CORRELATION)" },
+  "packet": {
+    "size_bytes": 28,
+    "byte_order": "Big-Endian",
+    "hex": "0000001601040000002A7B22616374696F6E223A202274657374227D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 22 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x01 (Command)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x04 (FLAG_CORRELATED)" },
+      { "name": "correlation_id", "offset": 6, "size": 4, "value": 42 },
+      { "name": "data", "offset": 10, "size": 18, "value_utf8": "{\"action\": \"test\"}" }
+    ]
+  },
+  "expected": "Dispatch the request and associate pending response state with correlation_id 42."
+}

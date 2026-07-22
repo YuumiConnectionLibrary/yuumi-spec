@@ -1,16 +1,16 @@
 {
-  "description": "Valid protocol version 1 handshake with JSON and MessagePack support and no additive capabilities.",
+  "description": "Valid version 1 handshake advertising request/response correlation.",
   "packet": {
     "size_bytes": 16,
     "byte_order": "Big-Endian",
-    "hex": "59554D4900000001000004D203000000",
+    "hex": "59554D4900000001000004D203000001",
     "fields": [
       { "name": "magic", "offset": 0, "size": 4, "value": "0x59554D49 (YUMI)" },
       { "name": "protocol_version", "offset": 4, "size": 4, "value": 1 },
       { "name": "pid", "offset": 8, "size": 4, "value": 1234 },
       { "name": "encoding_caps", "offset": 12, "size": 1, "value": "0x03 (JSON | MessagePack)" },
-      { "name": "capabilities", "offset": 13, "size": 3, "value": "0x000000" }
+      { "name": "capabilities", "offset": 13, "size": 3, "value": "0x000001 (CAP_CORRELATION)" }
     ]
   },
-  "expected": "The engine accepts the handshake when it supports at least one advertised encoding."
+  "expected": "The engine intersects 0x000001 with its own capability mask and returns ack_cap_correlation.bin or ack_capabilities_none.bin as the result."
 }

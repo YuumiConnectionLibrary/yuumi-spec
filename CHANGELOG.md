@@ -1,62 +1,31 @@
 # Changelog
 
-## v2.final
+Protocol revisions are recorded as dated change entries. The protocol version
+changes only for incompatible wire breaks; additive features are negotiated
+through capabilities.
 
-Release type: protocol lock/freeze (non-breaking over v2 baseline).
+## 2026-07-22
 
-### Added
-
-1. **Control channel schema on `ChannelControl` (`0x00`)**
-   - Fixed JSON schema for control messages:
-     - `{ "type": "heartbeat", "ts": <unix_ms> }`
-     - `{ "type": "error", "code": <int>, "message": <string> }`
-     - `{ "type": "ping", "seq": <int> }`
-     - `{ "type": "pong", "seq": <int> }`
-   - Control channel encoding is always JSON, independent from negotiated data encoding.
-   - Compliance rules:
-     - Ping must be answered with pong within heartbeat timeout.
-     - Protocol violations must send `error` before close.
-     - Unknown control `type` values are silently ignored (forward compatibility).
-
-2. **Frame fragmentation via `Flags` byte**
-   - `FLAG_FRAGMENT` = `0x01` (bit 0)
-   - `FLAG_LAST_FRAG` = `0x02` (bit 1)
-   - Bits 2-7 reserved and must be `0x00`.
-   - Fragmented payloads prefix `fragment_id` (`uint32`, Big-Endian) in first 4 payload bytes.
-   - Reassembly defaults and guards:
-     - Timeout configurable, default `15s`.
-     - Max concurrent fragment buffers configurable, default `16`.
-     - Exceeding cap closes with `ERR_PROTOCOL_VIOLATION (403)`.
-     - `fragment_id` wrap (`u32`) handled incrementally.
-
-3. **Configurable heartbeat defaults (SDK options, not wire-negotiated)**
-   - `interval`: default `30s`
-   - `miss_threshold`: default `3`
-   - `enabled`: default `true`
-
-4. **Security model and platform credential behavior**
-   - Socket creation requirement: mode `0600` when supported.
-   - PID strict mode:
-     - `expected_pid != 0` rejects mismatched PID (close without ACK).
-     - `expected_pid == 0` accepts any PID.
-   - Platform credential notes:
-     - Linux: `SO_PEERCRED` (`ucred`)
-     - macOS: `LOCAL_PEERCRED` (`xucred`) + `proc_pidpath` fallback validation
-     - Windows: AF_UNIX socket ACL trust model; handshake PID accepted as-is when ACLs are trusted
-
-5. **Status code**
-   - Added `ERR_PID_MISMATCH (402)`.
-
-6. **Conformance test vectors**
-   - Added canonical vector pairs (`.bin` + `.json`) in `test-vectors/`:
-     - `frame_fragment_first`
-     - `frame_fragment_last`
-     - `control_heartbeat`
-     - `control_error`
-     - `control_ping`
-     - `control_pong`
-
-### Freeze policy
-
-Protocol v2 is frozen. No breaking changes are allowed for 12 months from the
-v2.final release date. Future protocol evolution in this window must be additive.
+- Returned the unreleased specification to alpha status and protocol version 1.
+- Replaced the cross-platform Unix socket requirement with Unix domain sockets
+  on Linux/macOS and Named Pipes on Windows so every supported runtime can use
+  its native local stream transport.
+- Defined deterministic token-bearing endpoint addresses, stale endpoint
+  detection, Unix permissions, and Windows pipe ACL requirements.
+- Added isolated multi-connection sessions with engine-assigned session IDs and
+  explicit reconnection state reset.
+- Replaced the handshake reserved bytes with a negotiated 24-bit capability
+  mask and assigned the correlation capability.
+- Added request/response correlation, including deterministic prefix ordering
+  when correlation and fragmentation are combined.
+- Added payload-too-large and unsupported-encoding status codes with distinct
+  boundaries from structural protocol violations.
+- Separated protocol version, capability negotiation, and independent SDK
+  library versions to prevent additive features from changing compatibility.
+- Regenerated every handshake vector with protocol version 1 and replaced the
+  reserved handshake and ACK annotations with capability masks.
+- Added positive and rejection vectors for capability intersection, encoding
+  negotiation, sessions, correlation, and combined correlation fragmentation.
+- Realigned oversized-frame and Control error vectors with
+  `ERR_PAYLOAD_TOO_LARGE (413)` and documented every binary field in its JSON
+  companion.

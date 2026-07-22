@@ -1,13 +1,15 @@
 {
-  "payload_length": 16777217,
-  "note": "exceeds 16MiB cap, must trigger ERR_PROTOCOL_VIOLATION (403)",
-  "header_only": true,
-  "bytes": [
-    1,
-    0,
-    0,
-    1,
-    1,
-    0
-  ]
+  "description": "Header-only rejection vector declaring a payload one byte above the 16 MiB limit.",
+  "packet": {
+    "size_bytes": 6,
+    "byte_order": "Big-Endian",
+    "hex": "010000010100",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 16777217 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x01 (Command)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 0, "value": "intentionally omitted" }
+    ]
+  },
+  "expected": "Reject with ERR_PAYLOAD_TOO_LARGE (413) before allocating or reading a payload buffer."
 }

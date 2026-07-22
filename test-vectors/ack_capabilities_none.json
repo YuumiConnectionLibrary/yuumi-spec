@@ -1,0 +1,19 @@
+{
+  "description": "Capability intersection case where only the client supports correlation.",
+  "context": {
+    "client_handshake": "handshake_cap_correlation.bin",
+    "client_capabilities": "0x000001 (CAP_CORRELATION)",
+    "engine_capabilities": "0x000000",
+    "intersection": "0x000000"
+  },
+  "packet": {
+    "size_bytes": 4,
+    "byte_order": "Big-Endian for the 24-bit capability mask",
+    "hex": "01000000",
+    "fields": [
+      { "name": "encoding_selected", "offset": 0, "size": 1, "value": "0x01 (JSON)" },
+      { "name": "negotiated_capabilities", "offset": 1, "size": 3, "value": "0x000000" }
+    ]
+  },
+  "expected": "Accept the session but leave correlation disabled."
+}

@@ -1,390 +1,564 @@
-# Yuumi Wire Protocol — Specification v2.final
+# Yuumi Wire Protocol
 
-This document is the authoritative definition of the Yuumi IPC wire protocol.
-All language implementations (Go, C++, Rust, Python, …) must conform to this spec.
+Status: **alpha**
 
-> **Stability guarantee:** Protocol v2 is frozen. No breaking changes will be
-> introduced for 12 months from the v2.final release date (2026-06-02).
-> New features will be additive only.
+Protocol version: **`1`**
 
----
+This document is the authoritative definition of the Yuumi Wire Protocol. The
+keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are
+normative.
 
-## Overview
-
-Yuumi is a binary IPC protocol over Unix domain sockets (`.sock` files).
-It provides:
-
-- **Handshake** — magic, version, and PID verification with encoding negotiation
-- **Multiplexed channels** — 4 logical channels over a single connection
-- **Dual encoding** — JSON or MessagePack, negotiated at handshake
-- **Frame safety** — 16 MiB maximum payload to prevent OOM
-- **Fragmentation** — large payloads split across multiple frames via Flags byte
-- **Control channel protocol** — structured heartbeat, ping/pong, and error messages
+Yuumi is a local IPC bridge between a Go client and a logic engine. Go is the
+only client role. C++, Python, Rust, and TypeScript implement the engine role.
+Application lifecycle policy, restart policy, and domain semantics are outside
+the protocol. All multibyte integers on the wire are unsigned and Big-Endian.
 
 ---
 
-## Transport
+## 1. Protocol overview
 
-| Platform | Mechanism |
+Yuumi provides a platform-native local stream, a fixed handshake and ACK,
+per-session negotiation, four logical channels, optional request/response
+correlation, bounded fragmentation, and JSON Control messages.
+
+The engine accepts one or more connections. Each accepted connection becomes an
+independent session after a successful handshake, ACK, and session assignment.
+
+---
+
+## 2. Transport
+
+Yuumi uses only local stream transports. TCP, IP loopback, network ports, and
+any transport reachable from another host are forbidden.
+
+| Platform | Required transport |
 |---|---|
-| Linux / macOS | Unix domain socket (`AF_UNIX`) |
-| Windows | Unix domain socket via WSL2 / Windows AF_UNIX (Win10 1803+) |
+| Linux | Unix domain stream socket |
+| macOS | Unix domain stream socket |
+| Windows | Named Pipe in byte-stream mode |
 
-Socket path:
+On the same platform both endpoints **MUST** use the transport in this table.
+Transport fallback between Unix domain sockets and Named Pipes is forbidden.
 
+### 2.1 Address derivation
+
+Address derivation takes two application-provided values:
+
+- `endpoint_name`: 1 to 32 ASCII characters matching
+  `[A-Za-z0-9][A-Za-z0-9_-]{0,31}`;
+- `token`: exactly 32 lowercase hexadecimal characters encoding 128 bits
+  produced by a cryptographically secure random generator.
+
+Neither value is case-folded, Unicode-normalized, truncated, or otherwise
+rewritten. An invalid value **MUST** be rejected before any endpoint is opened.
+The canonical endpoint stem is:
+
+```text
+yuumi-<endpoint_name>-<token>
 ```
-<os_temp_dir>/<normalized_pipe_name>.sock
-```
 
-`normalized_pipe_name` is truncated to **64 bytes** (UTF-8) before appending `.sock`.
+| Platform | Address |
+|---|---|
+| Linux / macOS | `<os_temp_dir>/<canonical_stem>.sock` |
+| Windows | `\\.\pipe\<canonical_stem>` |
 
-Use platform APIs for temp dir:
-- Go: `os.TempDir()`
-- C++: `std::filesystem::temp_directory_path()`
+`<os_temp_dir>` **MUST** come from the platform temporary-directory API. SDKs
+**MUST NOT** hardcode `/tmp`, `/var/tmp`, `%TEMP%`, or another directory. The
+path separator is inserted exactly once. If the encoded Unix socket address is
+too long for the platform socket-address structure, endpoint creation **MUST**
+fail explicitly; an SDK **MUST NOT** truncate or hash it independently.
 
-Never hardcode `/tmp` or `%TEMP%`.
+For the same platform, `endpoint_name`, `token`, and OS temporary directory, all
+SDKs **MUST** produce byte-identical addresses. The token is part of the address
+and access-control model. It **SHOULD** be redacted from diagnostics that do not
+need the complete address.
+
+### 2.2 Endpoint presence and stale endpoints
+
+Endpoint presence is not evidence that an engine is alive. Liveness is tested
+only by attempting a connection.
+
+- A successful connection means the endpoint is live. A second engine
+  **MUST NOT** replace it.
+- A transient condition such as a busy Named Pipe **MUST NOT** be classified as
+  stale while a server instance can still accept connections.
+- If the connection is refused because no live listener owns the endpoint, the
+  endpoint is stale and the engine **MUST** remove or release it before
+  recreating it.
+- On Unix, removal means unlinking the stale socket node after the refused
+  connection and before binding.
+- On Windows, Named Pipe objects disappear when their final server handle is
+  closed. Re-creation means closing any stale handle owned by the process and
+  creating a fresh server instance with the same canonical name; there is no
+  filesystem node to unlink.
+
+An engine **MUST** remove or release its endpoint during orderly shutdown.
 
 ---
 
-## Connection Lifecycle
+## 3. Connection lifecycle
 
+```text
+Go client                               Engine
+    |                                     |
+    |--- Handshake (16 bytes) ----------->|
+    |                                     | validate and negotiate
+    |<-- ACK (4 bytes) -------------------|
+    |<-- Control: session ----------------|
+    |                                     |
+    |<== Per-session frames =============>|
+    |                                     |
+    |--- Close -------------------------->|
 ```
-Client                          Server
-  │                               │
-  │── Handshake (16 bytes) ──────▶│
-  │                               │  validate magic, version, PID
-  │◀─── ACK (4 bytes) ────────────│  select encoding
-  │                               │
-  │══ Data frames (bidirectional) ═│
-  │   (ChannelControl: heartbeat,  │
-  │    ping/pong, error — JSON)    │
-  │                               │
-  │── Close ──────────────────────▶│
-```
+
+The engine **MUST** send the session Control message immediately after the ACK
+and before any other frame. The client **MUST** receive it before treating the
+session as ready for application traffic.
+
+Handshake rejection is signalled by closing without an ACK. A peer that has not
+completed the handshake cannot receive a framed Control error.
 
 ---
 
-## Handshake Packet (Client → Server)
+## 4. Handshake
 
-**Size: 16 bytes, all fields Big-Endian.**
+The client sends exactly 16 bytes.
 
-```
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-├───────────────────────────────────────────────────────────────────┤
-│                    Magic  (4 bytes)  0x59554D49                   │
-├───────────────────────────────────────────────────────────────────┤
-│                    Version (4 bytes) uint32                       │
-├───────────────────────────────────────────────────────────────────┤
-│                    PID     (4 bytes) uint32                       │
-├───────────────┬───────────────────────────────────────────────────┤
-│ EncodingCaps  │              Reserved (3 bytes, must be 0x00)     │
-│   (1 byte)    │                                                   │
-└───────────────┴───────────────────────────────────────────────────┘
+```text
+Offset  Size  Field
+0       4     Magic
+4       4     ProtocolVersion
+8       4     PID
+12      1     EncodingCaps
+13      3     Capabilities
 ```
 
-| Field | Offset | Size | Description |
-|---|---|---|---|
-| Magic | 0 | 4 B | `0x59 0x55 0x4D 0x49` ("YUMI" in ASCII) |
-| Version | 4 | 4 B | Protocol version, currently `2` |
-| PID | 8 | 4 B | Client process ID |
-| EncodingCaps | 12 | 1 B | Bitmask of supported encodings |
-| Reserved | 13 | 3 B | Must be `0x00 0x00 0x00` |
+| Field | Required value or meaning |
+|---|---|
+| `Magic` | `0x59 0x55 0x4D 0x49` (`YUMI`) |
+| `ProtocolVersion` | `0x00000001` |
+| `PID` | Client process identifier as `uint32` |
+| `EncodingCaps` | Encodings supported by the client |
+| `Capabilities` | 24-bit client capability mask |
 
-**EncodingCaps bitmask:**
+The engine **MUST** read exactly 16 bytes before parsing the handshake. It
+**MUST** reject an invalid magic or protocol version without sending an ACK.
+The handshake PID is identifying metadata, not primary authentication.
+
+### 4.1 Encoding negotiation
 
 | Bit | Value | Encoding |
 |---|---|---|
 | 0 | `0x01` | JSON |
 | 1 | `0x02` | MessagePack |
+| 2-7 | - | Reserved; send as zero |
 
-A client that supports both sends `0x03`.
-
----
-
-## ACK Packet (Server → Client)
-
-**Size: 4 bytes.**
-
-```
-┌───────────────┬───────────────────────────────────────────────────┐
-│ EncodingSelected│          Reserved (3 bytes, 0x00)              │
-│   (1 byte)    │                                                   │
-└───────────────┴───────────────────────────────────────────────────┘
-```
-
-The server selects **one** encoding from the client's capabilities bitmask and places it in byte 0.
-
-**Rejection:** If magic, version, or PID validation fails, the server **closes the connection without sending an ACK**. The client must treat an EOF or read error at this stage as a handshake failure.
+The engine selects exactly one encoding from the intersection of the client
+mask and the engine mask. A zero intersection is
+`ERR_ENCODING_UNSUPPORTED (415)` and the engine **MUST** close without an ACK.
 
 ---
 
-## Data Frame
+## 5. Capabilities
 
-**Header: 6 bytes (Big-Endian), followed by the payload.**
+Capabilities negotiate additive features without changing the protocol
+version. The three bytes are one Big-Endian 24-bit mask: byte 13 contains bits
+23-16, byte 14 contains bits 15-8, and byte 15 contains bits 7-0.
 
-```
- 0       1       2       3       4       5       6 … 6+N-1
-├───────┴───────┴───────┴───────┼───────┼───────┼──────────────────┤
-│       Payload Length (BE u32) │Channel│ Flags │  Payload (N B)   │
-└───────────────────────────────┴───────┴───────┴──────────────────┘
-```
-
-| Field | Offset | Size | Description |
+| Bit | Mask | Name | Meaning |
 |---|---|---|---|
-| Payload Length | 0 | 4 B | Length of payload in bytes (Big-Endian uint32) |
-| Channel | 4 | 1 B | Logical channel identifier |
-| Flags | 5 | 1 B | Fragmentation flags bitmask (see Fragmentation) |
-| Payload | 6 | N B | Serialized message body |
+| 0 | `0x000001` | `CAP_CORRELATION` | `FLAG_CORRELATED` frames may be used |
+| 1-23 | - | Reserved | Send as zero; do not use |
 
-**Flags bitmask:**
+The client sends its supported mask in the handshake. The engine computes:
+
+```text
+negotiated_capabilities = client_capabilities & engine_capabilities
+```
+
+The engine returns that exact intersection in ACK bytes 1-3. A capability may
+be used only when its bit is set in the negotiated mask. A client **MUST** reject
+an ACK that sets a capability it did not advertise. Unknown or reserved bits
+received in the handshake are excluded from the intersection and otherwise
+ignored.
+
+Fragmentation, sessions, channels, and Control messages are baseline protocol
+version 1 behaviour and do not have capability bits.
+
+---
+
+## 6. ACK
+
+The engine sends exactly 4 bytes after a successful handshake.
+
+```text
+Offset  Size  Field
+0       1     EncodingSelected
+1       3     NegotiatedCapabilities
+```
+
+`EncodingSelected` is exactly one advertised value: `0x01` for JSON or `0x02`
+for MessagePack. `NegotiatedCapabilities` is the Big-Endian 24-bit intersection
+defined above.
+
+An ACK with an unadvertised encoding, multiple encoding bits, or capabilities
+outside the client mask is a protocol violation. The client **MUST** close.
+
+---
+
+## 7. Sessions
+
+The engine accepts up to its configured `max_sessions` simultaneous
+connections. `max_sessions = 1` provides one-to-one operation; a greater value
+allows multiple Go clients to share one engine. The limit is engine policy and
+is not negotiated on the wire.
+
+Each connection has isolated session state:
+
+- selected encoding and negotiated capabilities;
+- heartbeat timers and counters;
+- active fragment buffers;
+- pending correlation identifiers;
+- `session_id`;
+- local connection `epoch`.
+
+Channels are scoped to a session. The same channel number, fragment identifier,
+or correlation identifier in two sessions refers to unrelated state.
+
+### 7.1 Session assignment
+
+After the ACK, the engine assigns an opaque identifier unique among its active
+sessions and sends:
+
+```json
+{ "type": "session", "session_id": "01J4Y7M9K2P6V3N8Q5R0T1WXYZ" }
+```
+
+`session_id` is a non-empty printable ASCII string of at most 128 bytes. Clients
+**MUST** treat it as opaque. Reusing an identifier while its previous session is
+active is a protocol violation.
+
+### 7.2 Reconnection
+
+A connection established after a disconnect is a new session, not a continuation:
+
+- the client sends a new handshake;
+- encoding and capabilities are negotiated again;
+- both endpoints start with empty fragment and pending-correlation state;
+- the engine assigns a new `session_id`;
+- the reconnecting SDK increments its local `epoch` generation counter.
+
+`epoch` is local SDK state and is not transmitted. Its initial value is zero;
+each successfully established replacement connection increments it by one. An
+SDK **MUST NOT** use the old session negotiated state or buffers after close.
+
+---
+
+## 8. Data frames
+
+Every frame has a 6-byte header followed by `PayloadLength` bytes.
+
+```text
+Offset  Size  Field
+0       4     PayloadLength (Big-Endian uint32)
+4       1     Channel
+5       1     Flags
+6       N     Payload
+```
+
+`PayloadLength` includes every prefix required by active flags. A receiver
+**MUST** validate the declared length before allocating or reading a payload
+buffer.
+
+The maximum frame payload and maximum reassembled message data are both
+16,777,216 bytes (16 MiB). Prefixes count toward the frame limit. Exceeding
+either bound is `ERR_PAYLOAD_TOO_LARGE (413)`.
+
+### 8.1 Flags
 
 | Bit | Value | Name | Meaning |
 |---|---|---|---|
-| 0 | `0x01` | `FLAG_FRAGMENT` | This frame carries a fragment of a larger payload |
-| 1 | `0x02` | `FLAG_LAST_FRAG` | This is the last fragment of the sequence |
-| 2–7 | — | Reserved | Must be `0x00` |
+| 0 | `0x01` | `FLAG_FRAGMENT` | Payload carries one fragment |
+| 1 | `0x02` | `FLAG_LAST_FRAG` | Final fragment in a sequence |
+| 2 | `0x04` | `FLAG_CORRELATED` | Payload carries a correlation identifier |
+| 3-7 | - | Reserved | Send as zero; receipt is a protocol violation |
 
-A frame with `Flags = 0x00` is a complete, unfragmented payload (standard behavior).
-
-**Maximum payload size: 16,777,216 bytes (16 MiB).** Frames exceeding this must be rejected with `ERR_PROTOCOL_VIOLATION (403)`.
-
----
-
-## Fragmentation
-
-Fragmentation allows payloads larger than the practical single-frame limit to be
-split across multiple frames on the same channel. It reuses the `Flags` byte of
-the existing frame header — no change to the wire format.
-
-### Fragment frame layout
-
-When `FLAG_FRAGMENT (0x01)` is set, the **first 4 bytes of the payload field**
-are a `fragment_id` (uint32, Big-Endian). The remaining bytes are the fragment data.
-
-```
- 6       7       8       9      10 … 6+N-1
-├───────┴───────┴───────┴───────┼──────────────────┤
-│       fragment_id (BE u32)    │  fragment data   │
-└───────────────────────────────┴──────────────────┘
-```
-
-The `Payload Length` field in the frame header includes the 4-byte `fragment_id`
-prefix — i.e. `payload_length = 4 + len(fragment_data)`.
-
-### Reassembly rules
-
-A receiver accumulates fragments by `fragment_id` and reconstructs the original
-payload when `FLAG_LAST_FRAG (0x02)` is also set.
-
-| Rule | Detail |
-|---|---|
-| **Order** | Fragments arrive in order (Unix socket guarantees stream ordering). No explicit sequence number is needed. |
-| **Completion** | `FLAG_FRAGMENT \| FLAG_LAST_FRAG` (`0x03`) marks the final fragment. The receiver concatenates all fragment data (excluding the `fragment_id` prefix) and dispatches the full payload. |
-| **Timeout** | If `FLAG_LAST_FRAG` is not received within **T seconds** of the last fragment for a given `fragment_id`, the buffer is discarded and an internal timeout error is raised (`ERR_FRAGMENT_TIMEOUT`, 404). T is SDK-configurable; the recommended default is **15 seconds**. |
-| **Concurrent cap** | The maximum number of simultaneously active `fragment_id` values per connection is SDK-configurable; the recommended default is **16**. Exceeding the cap closes the connection with `ERR_PROTOCOL_VIOLATION (403)`. |
-| **ID wrap** | `fragment_id` is uint32 and may wrap. Receivers handle wrap incrementally (next ID after `0xFFFFFFFF` is `0x00000000`). |
-| **Non-fragmented frames** | `Flags = 0x00` frames are always complete payloads. A receiver must never attempt reassembly unless `FLAG_FRAGMENT` is set. |
-
-### Sender rules
-
-- A sender **must not** mix `fragment_id` values interleaved on the same channel
-  without completing or timing out the previous sequence.
-- All fragments of a sequence **must** be sent on the same `Channel`.
-- The `Payload Length` of each fragment frame **must** be ≤ 16 MiB (the standard
-  frame cap applies per-fragment, not per-reassembled payload).
+`FLAG_LAST_FRAG` without `FLAG_FRAGMENT` is a protocol violation. Zero denotes
+one complete, uncorrelated payload.
 
 ---
 
-## Channels
+## 9. Channels
 
 | Value | Name | Direction | Purpose |
 |---|---|---|---|
-| `0x00` | Control | Bidirectional | Heartbeat, ping/pong, lifecycle errors (see Control Channel Protocol) |
-| `0x01` | Command | Host → Sidecar | Commands, requests |
-| `0x02` | Log | Sidecar → Host | Log output, diagnostics |
-| `0x03` | Data | Bidirectional | Payload data exchange |
+| `0x00` | Control | Bidirectional | Session state, heartbeat, ping/pong, protocol errors |
+| `0x01` | Command | Go client to engine | Commands and requests |
+| `0x02` | Log | Engine to Go client | Logs and diagnostics |
+| `0x03` | Data | Bidirectional | Application data and responses |
+
+Direction violations and unknown channels are `ERR_PROTOCOL_VIOLATION (403)`.
+Channel state is never shared across sessions.
 
 ---
 
-## Control Channel Protocol
+## 10. Request/response correlation
 
-`ChannelControl` (`0x00`) carries structured lifecycle messages between the two
-endpoints. These messages are **always encoded as JSON**, regardless of the
-encoding negotiated during handshake.
+Correlation may be used only when `CAP_CORRELATION` was negotiated.
 
-> **Rationale:** Control messages are low-frequency and human-readable by design.
-> Using a fixed encoding eliminates ambiguity across implementations.
+When `FLAG_CORRELATED` is set, a Big-Endian `uint32 correlation_id` prefixes the
+message data. The requester allocates identifiers incrementally within its
+session. Wrap from `0xFFFFFFFF` to `0x00000000` is allowed, but an identifier
+**MUST NOT** be reused while a request with that identifier remains pending.
 
-### Message schema
+A response, including an application-level error response, **MUST** set
+`FLAG_CORRELATED` and repeat the request `correlation_id`. Protocol-level
+Control errors are connection or session errors, not application responses.
 
-All Control messages share the field `"type"` as a discriminator.
+Without the flag, no correlation prefix is present and the message is
+fire-and-forget. Logs, heartbeats, and uncorrelated streams retain this form.
 
-#### Heartbeat
+SDK request timeouts are configurable and not negotiated. On timeout, the
+pending request fails locally and its identifier is released. A late unmatched
+response **MUST NOT** be delivered as the response to another request.
 
-Sent periodically by both endpoints to signal liveness.
+### 10.1 Prefix order
 
-```json
-{ "type": "heartbeat", "ts": 1748558400000 }
+Prefixes appear in this fixed order:
+
+```text
+[fragment_id if FLAG_FRAGMENT]
+[correlation_id if FLAG_CORRELATED]
+[message or fragment data]
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | string | `"heartbeat"` |
-| `ts` | integer | Unix timestamp in **milliseconds** (UTC) |
+Both identifiers are Big-Endian `uint32`. When both flags are set, every
+fragment repeats both prefixes, allowing each frame prefix to be decoded
+without depending on a previous frame.
 
-#### Ping / Pong
+| Active flags | Payload layout |
+|---|---|
+| none | `data` |
+| `FLAG_CORRELATED` | `correlation_id | data` |
+| `FLAG_FRAGMENT` | `fragment_id | fragment_data` |
+| both | `fragment_id | correlation_id | fragment_data` |
 
-Used for latency measurement. The receiver must reply with a `pong` carrying the
-same `seq` value **within the configured heartbeat timeout window**.
+---
+
+## 11. Fragmentation
+
+The sender allocates a Big-Endian `uint32 fragment_id`. Wrap is allowed, but an
+identifier **MUST NOT** be reused while its previous sequence is active in the
+same session.
+
+The receiver groups frames by session, channel, and `fragment_id`, removes the
+per-frame prefixes, and concatenates fragment data in stream order. A frame with
+both `FLAG_FRAGMENT` and `FLAG_LAST_FRAG` completes the message.
+
+The following rules are normative:
+
+- every fragment in a sequence uses the same channel and correlation state;
+- if correlated, every fragment repeats the same `correlation_id`;
+- a sender does not interleave two fragment sequences on the same channel;
+- the receiver checks cumulative size before extending a buffer;
+- an incomplete sequence is discarded after a configurable timeout, with a
+  recommended default of 15 seconds;
+- active sequences are capped per session, with a recommended default of 16.
+
+A changed prefix, interleaved sequence, or exceeded active-buffer limit is
+`ERR_PROTOCOL_VIOLATION (403)`. Cumulative data above 16 MiB is
+`ERR_PAYLOAD_TOO_LARGE (413)`. A timed-out sequence is
+`ERR_FRAGMENT_TIMEOUT (404)` and is discarded.
+
+---
+
+## 12. Control channel protocol
+
+Control frames use channel `0x00` and are always JSON UTF-8, independently of
+the selected application encoding. Every Control object has a string `type`.
+
+### 12.1 Heartbeat
+
+```json
+{ "type": "heartbeat", "ts": 1784736000000 }
+```
+
+`ts` is a Unix timestamp in milliseconds UTC. Both endpoints may send
+heartbeats. The interval and miss threshold are SDK-configurable and are not
+wire-negotiated. Recommended defaults are 30 seconds and three missed intervals.
+Any valid received frame resets the receiver liveness counter.
+
+### 12.2 Ping and pong
 
 ```json
 { "type": "ping", "seq": 42 }
 { "type": "pong", "seq": 42 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | string | `"ping"` or `"pong"` |
-| `seq` | integer | Sequence number, echoed in the `pong` |
+The receiver **MUST** return a pong with the same `seq` within its configured
+heartbeat timeout.
 
-#### Error
-
-Sent by either endpoint to signal a protocol-level error before closing the
-connection. The sender **must** close the connection immediately after sending
-this message; the receiver **must not** send further data frames after receiving it.
+### 12.3 Protocol error
 
 ```json
-{ "type": "error", "code": 403, "message": "payload too large" }
+{ "type": "error", "code": 413, "message": "payload exceeds 16 MiB" }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | string | `"error"` |
-| `code` | integer | Status code (see Status Codes) |
-| `message` | string | Human-readable description |
+After session establishment, an endpoint that can safely frame an error **MUST**
+send this message before closing for a fatal protocol error and close
+immediately afterward. The peer **MUST NOT** send more frames after receiving
+it. Handshake failures close without ACK and without a Control frame.
 
-### Heartbeat configuration
-
-The heartbeat interval and miss threshold are **SDK-configurable**; they are not
-negotiated on the wire. Both endpoints operate independently with their own settings.
-
-| Parameter | Recommended default | Description |
-|---|---|---|
-| `interval` | 30 s | Time between outgoing heartbeat messages |
-| `miss_threshold` | 3 | Consecutive missed heartbeats before declaring the connection lost |
-| `enabled` | `true` | Set to `false` to disable heartbeat entirely (e.g. in tests) |
-
-A missed heartbeat is defined as: no message of any kind received from the remote
-endpoint within `interval` seconds. Any received frame (data or control) resets the
-miss counter.
-
-### Forward compatibility
-
-A receiver that encounters a `"type"` value it does not recognise **must silently
-ignore** the message and continue. This allows future Control message types to be
-added without breaking existing implementations.
+Unknown valid Control `type` values **MUST** be ignored. This rule does not make
+malformed JSON valid.
 
 ---
 
-## Security Model
+## 13. Status codes
 
-### Socket permissions
-
-The server **must** create the Unix socket with mode `0600` (owner read/write only).
-If a platform/runtime does not support permission enforcement for the socket node,
-this guarantee degrades and must be treated as best-effort.
-
-### PID strict mode
-
-Servers may enforce a configured `expected_pid`:
-
-- If `expected_pid != 0`: the server rejects a handshake with a different PID by
-  closing the connection **without ACK** and surfacing `ERR_PID_MISMATCH (402)`.
-- If `expected_pid == 0`: any client PID is accepted.
-
-### Platform credentials and trust model
-
-| Platform | Credential source | PID handling |
-|---|---|---|
-| Linux | `SO_PEERCRED` → `struct ucred { pid, uid, gid }` | PID is verifiable from peer credentials |
-| macOS | `LOCAL_PEERCRED` → `struct xucred { uid, gid }` | No PID in credential struct; fallback validation uses `proc_pidpath` to confirm PID exists and executable path matches expected binary |
-| Windows | Filesystem ACLs on AF_UNIX socket path | Handshake PID is accepted as-is when ACL ownership/permissions are trusted |
-
----
-
-## Status Codes
-
-Status codes identify protocol events in structured error types. They are **not transmitted on the wire** — they are internal diagnostics. The `code` field in a Control `error` message uses the same values.
+Status codes are structured diagnostics used locally and in Control errors.
 
 | Code | Name | Meaning |
 |---|---|---|
-| 100 | HANDSHAKE_START | Connection attempt initiated |
-| 101 | CONNECTING | Transport dial in progress |
-| 200 | OK_CONNECTED | Handshake completed successfully |
-| 201 | OK_MESSAGE_RECEIVED | Frame received and dispatched |
-| 202 | OK_HEARTBEAT | Heartbeat acknowledged |
-| 400 | ERR_MAGIC_MISMATCH | Handshake magic invalid |
-| 401 | ERR_VERSION_MISMATCH | Protocol version incompatible |
-| 402 | ERR_PID_MISMATCH | Client PID rejected |
-| 403 | ERR_PROTOCOL_VIOLATION | Invalid framing, payload too large, or fragmentation cap exceeded |
-| 404 | ERR_FRAGMENT_TIMEOUT | Fragment reassembly timed out — sequence discarded |
-| 500 | ERR_PIPE_FAILED | Transport connection failed |
-| 501 | ERR_READ_TIMEOUT | Read deadline exceeded |
-| 502 | ERR_WRITE_FAILED | Write to transport failed |
-| 503 | ERR_CONNECTION_LOST | Unexpected connection close |
-| 599 | ERR_INTERNAL | Unclassified internal error |
+| 100 | `HANDSHAKE_START` | Connection attempt initiated |
+| 101 | `CONNECTING` | Transport dial in progress |
+| 200 | `OK_CONNECTED` | Session established successfully |
+| 201 | `OK_MESSAGE_RECEIVED` | Frame received and dispatched |
+| 202 | `OK_HEARTBEAT` | Heartbeat acknowledged |
+| 400 | `ERR_MAGIC_MISMATCH` | Handshake magic invalid |
+| 401 | `ERR_VERSION_MISMATCH` | Protocol version incompatible |
+| 402 | `ERR_PID_MISMATCH` | Optional PID check rejected the client |
+| 403 | `ERR_PROTOCOL_VIOLATION` | Structurally invalid or inconsistent protocol data |
+| 404 | `ERR_FRAGMENT_TIMEOUT` | Fragment sequence timed out and was discarded |
+| 413 | `ERR_PAYLOAD_TOO_LARGE` | Frame or cumulative message exceeds 16 MiB |
+| 415 | `ERR_ENCODING_UNSUPPORTED` | No common encoding exists |
+| 500 | `ERR_PIPE_FAILED` | Local transport operation failed |
+| 501 | `ERR_READ_TIMEOUT` | Read deadline exceeded |
+| 502 | `ERR_WRITE_FAILED` | Transport write failed |
+| 503 | `ERR_CONNECTION_LOST` | Connection closed unexpectedly |
+| 599 | `ERR_INTERNAL` | Unclassified internal error |
+
+The boundary among `403`, `413`, and `415` is strict:
+
+- use `403` for invalid structure or state, including invalid flags, a short
+  prefix, invalid channel, inconsistent fragments, invalid ACK, or malformed
+  Control JSON;
+- use `413` only when otherwise parseable length information exceeds the frame
+  or reassembled-message bound; never allocate the oversized buffer;
+- use `415` only when a syntactically valid encoding advertisement has no
+  supported intersection. During handshake the engine closes without ACK.
+
+Payload rejected by application policy is not a protocol violation and does
+not use these codes.
 
 ---
 
-## Test Vectors
+## 14. Security model
 
-Canonical binary test vectors are in [`test-vectors/`](./test-vectors/). Each file has a companion `.json` with field-by-field annotations.
+The endpoint address is a capability. The 128-bit unpredictable token is part
+of the address on every platform and is the primary defence against unrelated
+local processes guessing it.
 
-| File | Description |
+This does not replace OS access controls:
+
+- on Linux and macOS, the engine **MUST** create the socket node with mode
+  `0600` for the owning user;
+- on Windows, the engine **MUST** apply a Named Pipe ACL restricted to the
+  intended local user and **MUST** reject remote pipe clients;
+- token and endpoint permissions **MUST** be in place before handshake traffic.
+
+The PID is not authentication. An engine MAY configure `expected_pid` as an
+additional check. A mismatch closes without ACK and surfaces
+`ERR_PID_MISMATCH (402)`. If the OS exposes trustworthy peer credentials, the
+engine SHOULD compare them with the handshake PID. Multiple sessions do not
+share one mandatory expected PID.
+
+---
+
+## 15. Versioning
+
+Yuumi has three independent version scales.
+
+| Scale | Purpose | Evolution rule |
+|---|---|---|
+| Protocol version | Compatibility gate in the 4-byte handshake field | Plain integer; increases only for an incompatible wire break |
+| Capabilities | Negotiation of additive wire features | One assigned bit per feature; enabled by endpoint intersection |
+| Library version | Release identifier for one SDK | Independent semantic version per repository |
+
+The current protocol version is `1`. It is not semantic versioning and has no
+alpha, beta, release-candidate, or final value on the wire. The specification
+itself is currently alpha. Library versions are visible metadata and
+**MUST NOT** be used to accept or reject a connection.
+
+Protocol revisions are recorded in `CHANGELOG.md` as dated, git-style entries
+describing what changed and why. Additive features use capabilities; they do not
+increment the protocol version.
+
+---
+
+## 16. Governance and conformance
+
+`yuumi-spec` is the source of truth. Wire changes originate here and flow to
+SDKs. A public SDK API must belong to either the Go Client API contract or the
+Engine API contract; those contracts are intentionally different.
+
+Conformance is established by executing canonical vectors in
+[`test-vectors/`](./test-vectors/), not by code inspection. Every `.bin` file
+has a same-basename `.json` annotation containing its exact hexadecimal bytes,
+field offsets, context, and expected outcome.
+
+### Canonical test vectors
+
+| Binary vector | Purpose |
 |---|---|
-| `handshake_valid.bin` | Valid handshake, version=2, JSON+MsgPack caps |
-| `handshake_bad_magic.bin` | Magic = `0xDEADBEEF` (should be rejected) |
-| `ack_json.bin` | ACK selecting JSON encoding |
-| `ack_msgpack.bin` | ACK selecting MsgPack encoding |
-| `frame_channel_command.bin` | Data frame on ChannelCommand with JSON payload |
-| `frame_oversized.bin` | Header with length = 16MiB+1 (must be rejected) |
-| `frame_fragment_first.bin` | Fragment frame: `FLAG_FRAGMENT`, fragment_id=1 |
-| `frame_fragment_last.bin` | Fragment frame: `FLAG_FRAGMENT \| FLAG_LAST_FRAG`, fragment_id=1 |
-| `control_heartbeat.bin` | ChannelControl frame — `{"type":"heartbeat","ts":1748558400000}` |
-| `control_error.bin` | ChannelControl frame — `{"type":"error","code":403,"message":"payload too large"}` |
-| `control_ping.bin` | ChannelControl frame — `{"type":"ping","seq":1}` |
-| `control_pong.bin` | ChannelControl frame — `{"type":"pong","seq":1}` |
+| `handshake_valid.bin` | Valid version 1 handshake without additive capabilities |
+| `handshake_bad_magic.bin` | Invalid magic rejection with `400` and no ACK |
+| `handshake_bad_version.bin` | Incompatible version rejection with `401` and no ACK |
+| `handshake_cap_correlation.bin` | Client advertisement of `CAP_CORRELATION` |
+| `handshake_encoding_unsupported.bin` | Empty encoding intersection rejection with `415` and no ACK |
+| `ack_json.bin` | JSON selection with no negotiated capabilities |
+| `ack_msgpack.bin` | MessagePack selection with no negotiated capabilities |
+| `ack_cap_correlation.bin` | Correlation capability present in both endpoint masks |
+| `ack_capabilities_none.bin` | Correlation advertised only by the client and excluded by intersection |
+| `ack_unadvertised_capability.bin` | Invalid ACK capability rejection with `403` |
+| `frame_channel_command.bin` | Complete fire-and-forget command |
+| `frame_oversized.bin` | Declared payload above 16 MiB rejected with `413` before allocation |
+| `frame_fragment_first.bin` | First uncorrelated fragment |
+| `frame_fragment_last.bin` | Final uncorrelated fragment and completed reassembly |
+| `frame_correlated_request.bin` | Correlated request with identifier 42 |
+| `frame_correlated_response.bin` | Response repeating identifier 42 |
+| `frame_correlated_not_negotiated.bin` | Correlation used without capability negotiation, rejected with `403` |
+| `frame_fragment_correlated_first.bin` | First fragment with `fragment_id` before `correlation_id` |
+| `frame_fragment_correlated_last.bin` | Final fragment repeating both identifiers in prefix order |
+| `control_session.bin` | Engine session assignment immediately after ACK |
+| `control_session_empty_id.bin` | Empty session identifier rejection with `403` |
+| `control_heartbeat.bin` | JSON heartbeat |
+| `control_ping.bin` | JSON ping with sequence 1 |
+| `control_pong.bin` | JSON pong echoing sequence 1 |
+| `control_error.bin` | JSON payload-size error with status `413` |
 
----
+### Conformance checklist
 
-## Versioning
+A conforming implementation must:
 
-The protocol version is an opaque `uint32`. Backward compatibility is not guaranteed across major version increments. A server receiving an unknown version **must** close without ACK.
-
-Current version: **`2`** (spec: v2.final, released 2026-06-02)
-
----
-
-## Conformance Checklist
-
-A compliant implementation must:
-
-- [ ] Send/receive the 16-byte handshake with all fields Big-Endian
-- [ ] Reject connections with incorrect magic without sending ACK
-- [ ] Reject connections with mismatched protocol version without sending ACK
-- [ ] Support at minimum one encoding (JSON recommended as fallback)
-- [ ] Enforce the 16 MiB payload cap on receive
-- [ ] Normalize pipe names to ≤ 64 bytes before resolving transport address
-- [ ] Use the OS temp directory API (not a hardcoded path)
-- [ ] Clear read/write deadlines after handshake completion
-- [ ] Treat `Flags = 0x00` frames as complete, unfragmented payloads
-- [ ] Reassemble fragmented frames using `fragment_id` when `FLAG_FRAGMENT` is set
-- [ ] Discard incomplete fragment sequences after the configured timeout (default 15 s) with `ERR_FRAGMENT_TIMEOUT (404)`
-- [ ] Close the connection with `ERR_PROTOCOL_VIOLATION (403)` if the concurrent fragment cap is exceeded
-- [ ] Send and respond to `heartbeat` messages on ChannelControl (JSON-encoded)
-- [ ] Respond to `ping` with a `pong` carrying the same `seq` value
-- [ ] Send an `error` Control message before closing the connection on protocol violations
-- [ ] Silently ignore unknown `"type"` values on ChannelControl
-- [ ] Create socket endpoints with `0600` permissions when supported by the platform
-- [ ] Enforce PID strict mode when `expected_pid != 0` and reject mismatches with `ERR_PID_MISMATCH (402)` without ACK
+- [ ] use Unix domain stream sockets on Linux/macOS and Named Pipes on Windows;
+- [ ] never use TCP and use the required transport at both endpoints;
+- [ ] derive a byte-identical address from name, token, and the OS temp API;
+- [ ] enforce `0600` on Unix or the required Named Pipe ACL on Windows;
+- [ ] test endpoint liveness by connecting and remove or release stale endpoints;
+- [ ] send and parse the 16-byte handshake with protocol version `1`;
+- [ ] negotiate one encoding and reject an empty intersection with `415`;
+- [ ] negotiate capabilities by intersection and return them in the 4-byte ACK;
+- [ ] accept up to the configured number of isolated sessions;
+- [ ] send and validate session assignment immediately after the ACK;
+- [ ] reset negotiated state, buffers, and identifiers on reconnection;
+- [ ] keep channels, fragments, correlations, and heartbeat isolated per session;
+- [ ] validate lengths before allocation and enforce both 16 MiB bounds;
+- [ ] parse prefixes in fragment-then-correlation order;
+- [ ] repeat and validate both identifiers on every correlated fragment;
+- [ ] correlate responses and application errors with the request identifier;
+- [ ] preserve fire-and-forget behaviour without the correlation flag;
+- [ ] discard incomplete fragments on timeout and enforce the buffer limit;
+- [ ] encode Control as JSON and ignore unknown valid Control types;
+- [ ] distinguish structural `403`, size `413`, and encoding `415` failures;
+- [ ] treat `expected_pid` only as an optional additional control.

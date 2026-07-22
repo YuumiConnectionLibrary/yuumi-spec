@@ -1,10 +1,13 @@
 {
-  "encoding_selected": "0x02 (MsgPack)",
-  "reserved": "0x000000",
-  "bytes": [
-    2,
-    0,
-    0,
-    0
-  ]
+  "description": "Successful 4-byte ACK selecting MessagePack with no negotiated additive capabilities.",
+  "packet": {
+    "size_bytes": 4,
+    "byte_order": "Big-Endian for the 24-bit capability mask",
+    "hex": "02000000",
+    "fields": [
+      { "name": "encoding_selected", "offset": 0, "size": 1, "value": "0x02 (MessagePack)" },
+      { "name": "negotiated_capabilities", "offset": 1, "size": 3, "value": "0x000000" }
+    ]
+  },
+  "expected": "Accept when MessagePack was advertised by the client."
 }

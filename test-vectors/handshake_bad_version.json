@@ -1,16 +1,16 @@
 {
-  "description": "Valid protocol version 1 handshake with JSON and MessagePack support and no additive capabilities.",
+  "description": "Handshake rejection case with incompatible protocol version 0.",
   "packet": {
     "size_bytes": 16,
     "byte_order": "Big-Endian",
-    "hex": "59554D4900000001000004D203000000",
+    "hex": "59554D4900000000000004D203000000",
     "fields": [
       { "name": "magic", "offset": 0, "size": 4, "value": "0x59554D49 (YUMI)" },
-      { "name": "protocol_version", "offset": 4, "size": 4, "value": 1 },
+      { "name": "protocol_version", "offset": 4, "size": 4, "value": 0 },
       { "name": "pid", "offset": 8, "size": 4, "value": 1234 },
       { "name": "encoding_caps", "offset": 12, "size": 1, "value": "0x03 (JSON | MessagePack)" },
       { "name": "capabilities", "offset": 13, "size": 3, "value": "0x000000" }
     ]
   },
-  "expected": "The engine accepts the handshake when it supports at least one advertised encoding."
+  "expected": "Reject with ERR_VERSION_MISMATCH (401), close the connection, and send no ACK."
 }

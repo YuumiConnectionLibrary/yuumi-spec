@@ -1,13 +1,15 @@
 {
-  "description": "ChannelControl frame carrying a ping message. Receiver must reply with pong carrying seq=1.",
-  "fields": {
-    "payload_length": 23,
-    "channel": "0x00 (Control)",
-    "flags": "0x00",
-    "encoding": "JSON (always)",
-    "message": {
-      "type": "ping",
-      "seq": 1
-    }
-  }
+  "description": "Uncorrelated JSON ping Control frame with sequence 1.",
+  "packet": {
+    "size_bytes": 29,
+    "byte_order": "Big-Endian",
+    "hex": "0000001700007B2274797065223A2270696E67222C22736571223A317D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 23 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x00 (Control)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 23, "value_utf8": "{\"type\":\"ping\",\"seq\":1}" }
+    ]
+  },
+  "expected": "Reply with control_pong.bin within the configured heartbeat timeout."
 }

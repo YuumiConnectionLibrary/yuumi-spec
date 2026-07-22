@@ -1,11 +1,17 @@
 {
-  "description": "Last fragment frame on ChannelControl, fragment_id=1. Reassembled payload: Hello World",
-  "fields": {
-    "payload_length": 10,
-    "channel": "0x00 (Control)",
-    "flags": "0x03 (FLAG_FRAGMENT | FLAG_LAST_FRAG)",
-    "fragment_id": 1,
-    "fragment_data": " World (ASCII)",
-    "reassembled_payload": "Hello World"
-  }
+  "description": "Final uncorrelated fragment for fragment_id 1.",
+  "packet": {
+    "size_bytes": 16,
+    "byte_order": "Big-Endian",
+    "hex": "0000000A03030000000120576F726C64",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 10 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x03 (FLAG_FRAGMENT | FLAG_LAST_FRAG)" },
+      { "name": "fragment_id", "offset": 6, "size": 4, "value": 1 },
+      { "name": "fragment_data", "offset": 10, "size": 6, "value_utf8": " World" }
+    ]
+  },
+  "context": { "preceded_by": "frame_fragment_first.bin" },
+  "expected": "Dispatch the reassembled UTF-8 payload Hello World."
 }

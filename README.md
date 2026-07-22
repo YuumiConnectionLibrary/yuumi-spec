@@ -64,7 +64,7 @@ Client (Go)                              Server (C++ / Python / …)
 |---|---|
 | 0–3 | Payload length in bytes (BE uint32, max 16 MiB) |
 | 4 | Channel ID (see table below) |
-| 5 | Flags (must be `0x00`) |
+| 5 | Fragmentation flags (`0x00`, `FLAG_FRAGMENT`, or `FLAG_FRAGMENT | FLAG_LAST_FRAG`) |
 | 6+ | Payload — JSON or MsgPack object |
 
 ### Channels
@@ -122,6 +122,12 @@ All SDKs expose the same public API surface and must pass the conformance test v
 | `ack_msgpack.bin` | ACK selecting MsgPack encoding |
 | `frame_channel_command.bin` | Data frame on ChannelCommand with JSON payload `{"action":"test"}` |
 | `frame_oversized.bin` | Length = 16 MiB+1 — must trigger `ERR_PROTOCOL_VIOLATION (403)` |
+| `frame_fragment_first.bin` | First fragment (`FLAG_FRAGMENT`), fragment ID 1, data `Hello` |
+| `frame_fragment_last.bin` | Final fragment (`FLAG_FRAGMENT | FLAG_LAST_FRAG`), completing `Hello World` |
+| `control_heartbeat.bin` | JSON heartbeat control frame |
+| `control_ping.bin` | JSON ping control frame with sequence 1 |
+| `control_pong.bin` | JSON pong control frame with sequence 1 |
+| `control_error.bin` | JSON protocol-error control frame; sender must close afterward |
 
 ---
 

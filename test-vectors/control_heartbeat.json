@@ -1,13 +1,15 @@
 {
-  "description": "ChannelControl frame carrying a heartbeat message (JSON, Flags=0x00)",
-  "fields": {
-    "payload_length": 39,
-    "channel": "0x00 (Control)",
-    "flags": "0x00",
-    "encoding": "JSON (always, regardless of negotiated encoding)",
-    "message": {
-      "type": "heartbeat",
-      "ts": 1748558400000
-    }
-  }
+  "description": "Uncorrelated JSON heartbeat Control frame.",
+  "packet": {
+    "size_bytes": 45,
+    "byte_order": "Big-Endian",
+    "hex": "0000002700007B2274797065223A22686561727462656174222C227473223A313734383535383430303030307D",
+    "fields": [
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 39 },
+      { "name": "channel", "offset": 4, "size": 1, "value": "0x00 (Control)" },
+      { "name": "flags", "offset": 5, "size": 1, "value": "0x00" },
+      { "name": "payload", "offset": 6, "size": 39, "value_utf8": "{\"type\":\"heartbeat\",\"ts\":1748558400000}" }
+    ]
+  },
+  "expected": "Parse as JSON independently of the selected application encoding and reset liveness state."
 }
