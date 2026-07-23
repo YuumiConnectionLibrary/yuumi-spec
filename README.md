@@ -32,7 +32,7 @@ The protocol is **asymmetric by design**:
 Yuumi does not have one public API shared by every SDK. It has two deliberately
 different contracts:
 
-- The **Client API** belongs only to the Go SDK.
+- The **[Client API](./CLIENT_API.md)** belongs only to the Go SDK.
 - The **[Engine API](./ENGINE_API.md)** belongs to C++, Python, Rust, and
   TypeScript.
 
@@ -40,6 +40,11 @@ The Engine API is a language-neutral behavioural contract. It defines endpoint
 lifecycle, session isolation, engine-side handshake negotiation, security,
 events, and outbound sends without forcing identical method spellings across
 languages.
+
+The Client API has a single implementation and therefore prescribes concrete Go
+signatures. It defines address derivation and dialling, client-side negotiation,
+the three non-overlapping inbound paths, correlated requests, and reconnection
+semantics. It never listens and never owns an endpoint.
 
 ---
 
@@ -49,12 +54,12 @@ languages.
 Go client                                  Engine
    │                                         │
    │── Handshake (16 bytes, Big-Endian) ────►│ validate and negotiate
-   │◄── ACK (4 bytes) ──────────────────────│
-   │◄── Control: session ───────────────────│
-   │                                        │
-   │◄════ Per-session frames ══════════════►│
-   │                                        │
-   │── close ──────────────────────────────►│
+   │◄── ACK (4 bytes) ────────────────────── │
+   │◄── Control: session ─────────────────── │
+   │                                         │
+   │◄════ Per-session frames ══════════════► │
+   │                                         │
+   │── close ──────────────────────────────► │
 ```
 
 ---
