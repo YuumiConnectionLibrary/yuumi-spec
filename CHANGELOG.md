@@ -4,6 +4,16 @@ Protocol revisions are recorded as dated change entries. The protocol version
 changes only for incompatible wire breaks; additive features are negotiated
 through capabilities.
 
+## 2026-07-23
+
+- Defined the numbered Engine Conformance Suite as the shared acceptance
+  criterion for the C++, Python, Rust, and TypeScript engine SDKs.
+- Covered configuration, endpoint security and lifecycle, handshake rejection
+  and negotiation, concurrent session isolation, frame safety, Control
+  behaviour, correlation, events, and engine-side sends.
+- Distinguished mandatory baseline cases from correlation-capability cases and
+  identified the canonical vector consumed by every applicable test.
+
 ## 2026-07-22
 
 - Defined the language-neutral Engine API contract for endpoint lifecycle,

@@ -111,8 +111,9 @@ Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
 | **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine | `npm install yuumi` *(planned)* |
 
 All SDKs implement their role-specific contract and must pass the applicable
-conformance tests. Wire conformance is proven with the canonical vectors in
-[`test-vectors/`](./test-vectors/).
+conformance tests. The four engine SDKs share the numbered
+[`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). Wire conformance is
+proven with the canonical vectors in [`test-vectors/`](./test-vectors/).
 
 ---
 
@@ -151,6 +152,10 @@ Every `.bin` fixture in [`test-vectors/`](./test-vectors/) has a same-basename
 `.json` annotation with exact bytes, offsets, context, and expected behaviour.
 The complete canonical vector inventory is maintained in
 [`PROTOCOL.md`](./PROTOCOL.md#canonical-test-vectors).
+
+Engine acceptance is defined by
+[`ENGINE_CONFORMANCE.md`](./ENGINE_CONFORMANCE.md), which distinguishes
+baseline tests from tests that run only after capability negotiation.
 
 ---
 

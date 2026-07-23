@@ -299,6 +299,7 @@ An engine SDK conforms only when tests can demonstrate all of the following:
   invalid session, and transport failure; and
 - absence of public engine process policy or a required `Runner` equivalent.
 
-The conformance suite is defined separately. The canonical wire behaviours and
-binary fixtures remain governed by [`PROTOCOL.md`](./PROTOCOL.md) and
-[`test-vectors/`](./test-vectors/).
+The executable acceptance criteria are defined by the
+[`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). The canonical wire
+behaviours and binary fixtures remain governed by
+[`PROTOCOL.md`](./PROTOCOL.md) and [`test-vectors/`](./test-vectors/).

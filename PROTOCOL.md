@@ -508,6 +508,10 @@ Conformance is established by executing canonical vectors in
 has a same-basename `.json` annotation containing its exact hexadecimal bytes,
 field offsets, context, and expected outcome.
 
+The C++, Python, Rust, and TypeScript engines use the canonical vectors through
+the numbered [`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). That suite
+is the common acceptance criterion for the Engine API implementations.
+
 ### Canonical test vectors
 
 | Binary vector | Purpose |
