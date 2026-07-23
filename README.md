@@ -1,40 +1,60 @@
 # Yuumi
 
-> Binary IPC protocol for multi-process applications — one socket, multiple channels, two encodings.
+> Local IPC protocol for a Go shell and language-independent logic engines.
 
-Yuumi is a lightweight wire protocol and SDK ecosystem that lets a Go frontend (TUI, CLI) communicate with a backend written in **any language** over a local Unix socket. This repository is the canonical source of truth: it contains the protocol specification and the conformance test vectors that all implementations must pass.
+Yuumi is a lightweight wire protocol and SDK ecosystem that lets a Go frontend
+(TUI or CLI) communicate with a logic engine written in another language over
+platform-native local IPC. This repository is the canonical source of truth for
+the wire protocol, public API contracts, and conformance vectors.
 
-> **Protocol freeze:** Protocol v2 is frozen. No breaking changes will be introduced for 12 months from the v2.final release date. New features will be additive only.
+Status: **alpha**. Current protocol version: **`1`**.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────┐    Unix socket (.sock)    ┌────────────────────────────┐
-│   Go frontend (TUI/CLI)  │ ◄───────────────────────► │   Backend server           │
-│   yuumi (client SDK)     │     Yuumi v2 protocol      │   C++ / Python / Rust / …  │
+┌──────────────────────────┐   Local stream transport   ┌────────────────────────────┐
+│   Go frontend (TUI/CLI)  │ ◄────────────────────────► │   Logic engine             │
+│   yuumi (client SDK)     │        Yuumi protocol      │   C++ / Python / Rust / TS │
 └──────────────────────────┘                            └────────────────────────────┘
 ```
 
 The protocol is **asymmetric by design**:
 
-- The **Go SDK** (`yuumi`) is the *client* — it dials the socket, sends the handshake, and drives the UI layer. It can also start and stop the server binary via `Runner`.
-- The **server SDKs** (`yuumi-cpp`, `yuumi-py`, `yuumi-rs`, …) listen on the socket, validate the handshake, and handle application logic.
+- The **Go SDK** (`yuumi`) is the only client and provides the UI-side API.
+- The **engine SDKs** (`yuumi-cpp`, `yuumi-py`, `yuumi-rs`, and `yuumi-ts`)
+  open the endpoint, accept sessions, validate handshakes, and host application
+  logic.
+
+## The two contracts
+
+Yuumi does not have one public API shared by every SDK. It has two deliberately
+different contracts:
+
+- The **Client API** belongs only to the Go SDK.
+- The **[Engine API](./ENGINE_API.md)** belongs to C++, Python, Rust, and
+  TypeScript.
+
+The Engine API is a language-neutral behavioural contract. It defines endpoint
+lifecycle, session isolation, engine-side handshake negotiation, security,
+events, and outbound sends without forcing identical method spellings across
+languages.
 
 ---
 
 ## Connection lifecycle
 
 ```
-Client (Go)                              Server (C++ / Python / …)
-   │                                              │
-   │── Handshake (16 bytes, Big-Endian) ────────►│  validate magic, version, PID
-   │◄── ACK (4 bytes) ──────────────────────────│  select encoding (JSON or MsgPack)
-   │                                              │
-   │◄══ Data frames (bidirectional) ══════════════│
-   │                                              │
-   │── close ───────────────────────────────────►│
+Go client                                  Engine
+   │                                         │
+   │── Handshake (16 bytes, Big-Endian) ────►│ validate and negotiate
+   │◄── ACK (4 bytes) ──────────────────────│
+   │◄── Control: session ───────────────────│
+   │                                        │
+   │◄════ Per-session frames ══════════════►│
+   │                                        │
+   │── close ──────────────────────────────►│
 ```
 
 ---
@@ -46,17 +66,17 @@ Client (Go)                              Server (C++ / Python / …)
 | Bytes | Field | Value |
 |---|---|---|
 | 0–3 | Magic | `0x59554D49` ("YUMI" in ASCII) |
-| 4–7 | Protocol version | `2` (uint32) |
+| 4–7 | Protocol version | `1` (uint32) |
 | 8–11 | Client PID | uint32 |
 | 12 | Encoding capabilities | `0x01`=JSON, `0x02`=MsgPack, `0x03`=both |
-| 13–15 | Reserved | `0x000000` (must be zero) |
+| 13–15 | Capability mask | 24-bit client capability advertisement |
 
 ### ACK — server → client, 4 bytes
 
 | Bytes | Field |
 |---|---|
 | 0 | Selected encoding (`0x01` or `0x02`) |
-| 1–3 | Reserved (`0x00`, must be zero) |
+| 1–3 | Negotiated capabilities (client mask intersected with engine mask) |
 
 ### Data frame — 6-byte header + payload
 
@@ -64,7 +84,7 @@ Client (Go)                              Server (C++ / Python / …)
 |---|---|
 | 0–3 | Payload length in bytes (BE uint32, max 16 MiB) |
 | 4 | Channel ID (see table below) |
-| 5 | Fragmentation flags (`0x00`, `FLAG_FRAGMENT`, or `FLAG_FRAGMENT | FLAG_LAST_FRAG`) |
+| 5 | Fragmentation and optional correlation flags |
 | 6+ | Payload — JSON or MsgPack object |
 
 ### Channels
@@ -85,56 +105,61 @@ Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
 | Language | Repo | Role | Install |
 |---|---|---|---|
 | **Go** | [yuumi](https://github.com/YuumiConnectionLibrary/yuumi) | Client / TUI side | `go get github.com/YuumiConnectionLibrary/yuumi` |
-| **C++23** | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | Server side | CMake + vcpkg |
-| **Python 3.11+** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Server / scripting | `pip install yuumi-py` |
-| **Rust** | [yuumi-rs](https://github.com/YuumiConnectionLibrary/yuumi-rs) | Server / CLI tools | `cargo add yuumi` *(planned)* |
-| **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Server / Node tools | `npm install yuumi` *(planned)* |
+| **C++23** | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | Engine | CMake + vcpkg |
+| **Python 3.11+** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Engine | `pip install yuumi-py` |
+| **Rust** | [yuumi-rs](https://github.com/YuumiConnectionLibrary/yuumi-rs) | Engine | `cargo add yuumi` *(planned)* |
+| **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine | `npm install yuumi` *(planned)* |
 
-All SDKs expose the same public API surface and must pass the conformance test vectors in [`test-vectors/`](./test-vectors/).
+All SDKs implement their role-specific contract and must pass the applicable
+conformance tests. Wire conformance is proven with the canonical vectors in
+[`test-vectors/`](./test-vectors/).
 
 ---
 
 ## Technical choices
 
-**Unix domain sockets** — zero-copy local IPC, no network stack, no firewall rules. Available on Linux, macOS, and Windows 10 1803+ (`AF_UNIX`). Socket path is always `<os_temp_dir>/<pipe_name>.sock` with the pipe name capped at 64 UTF-8 bytes.
+**Platform-native local streams** — Unix domain sockets on Linux/macOS and Named
+Pipes on Windows. TCP and transport fallback are forbidden. The deterministic
+address includes a 128-bit token and uses the platform temporary-directory API
+where applicable.
 
-**Binary handshake (16 bytes)** — PID field allows the server to reject connections from unexpected processes. The version field enables protocol evolution without breaking existing deployments.
+**Binary handshake (16 bytes)** — the protocol version is a compatibility gate,
+the PID can be checked optionally, and a 24-bit mask negotiates additive
+capabilities.
 
-**Dual encoding: JSON + MsgPack** — JSON for human-readable debugging and broad interoperability; MsgPack for production throughput (~30 % smaller payloads, no string parsing). The server selects one encoding from the client's capability bitmask during handshake.
+**Dual encoding: JSON + MsgPack** — the engine selects one common encoding from
+the masks exchanged during handshake.
 
-**16 MiB payload cap** — enforced on receive to prevent OOM from malformed or adversarial frames. Frames exceeding the limit must be rejected with `ERR_PROTOCOL_VIOLATION (403)`.
+**16 MiB payload cap** — frame lengths are validated before allocation and both
+frame and reassembled-message overflow use `ERR_PAYLOAD_TOO_LARGE (413)`.
 
-**Channel multiplexing** — four logical channels over a single socket connection, separating control traffic (heartbeat) from application data without the overhead of multiple connections.
+**Channel multiplexing** — four logical channels share each session's local
+stream, separating Control traffic from application data.
 
-**Heartbeat on ChannelControl** — `{"type":"heartbeat","ts":<unix_timestamp>}` frames are dispatched to a dedicated `on_heartbeat` callback in every SDK, keeping them out of the application message stream.
+**Isolated sessions** — every accepted connection owns its negotiated encoding,
+capabilities, heartbeat state, fragmentation buffers, correlation state,
+`session_id`, and local `epoch`.
 
-**Exponential backoff with jitter** — all SDKs expose a `ReconnectPolicy` type (initial delay, max delay, max attempts, ±10 % jitter) to handle transient server startup delays.
+**Capabilities, not version bumps** — additive features are enabled only by the
+intersection of endpoint capability masks. Library semver remains independent.
 
 ---
 
 ## Conformance test vectors
 
-| File | Description |
-|---|---|
-| `handshake_valid.bin` | Valid handshake, version=2, JSON+MsgPack caps, PID=1234 |
-| `handshake_bad_magic.bin` | Magic = `0xDEADBEEF` — must be rejected without ACK |
-| `ack_json.bin` | ACK selecting JSON encoding |
-| `ack_msgpack.bin` | ACK selecting MsgPack encoding |
-| `frame_channel_command.bin` | Data frame on ChannelCommand with JSON payload `{"action":"test"}` |
-| `frame_oversized.bin` | Length = 16 MiB+1 — must trigger `ERR_PROTOCOL_VIOLATION (403)` |
-| `frame_fragment_first.bin` | First fragment (`FLAG_FRAGMENT`), fragment ID 1, data `Hello` |
-| `frame_fragment_last.bin` | Final fragment (`FLAG_FRAGMENT | FLAG_LAST_FRAG`), completing `Hello World` |
-| `control_heartbeat.bin` | JSON heartbeat control frame |
-| `control_ping.bin` | JSON ping control frame with sequence 1 |
-| `control_pong.bin` | JSON pong control frame with sequence 1 |
-| `control_error.bin` | JSON protocol-error control frame; sender must close afterward |
+Every `.bin` fixture in [`test-vectors/`](./test-vectors/) has a same-basename
+`.json` annotation with exact bytes, offsets, context, and expected behaviour.
+The complete canonical vector inventory is maintained in
+[`PROTOCOL.md`](./PROTOCOL.md#canonical-test-vectors).
 
 ---
 
 ## Versioning
 
-Protocol version is an opaque `uint32` in the handshake. Current version: **2**.
-Breaking wire changes must increment the version and refresh all test vectors.
+Protocol version is a plain integer compatibility gate in the handshake.
+Current version: **`1`**. Additive features use capability bits; incompatible
+wire changes increment the protocol version and regenerate the vectors. Each SDK
+uses its own independent library semver.
 
 ---
 

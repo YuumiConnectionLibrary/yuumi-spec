@@ -500,7 +500,8 @@ increment the protocol version.
 
 `yuumi-spec` is the source of truth. Wire changes originate here and flow to
 SDKs. A public SDK API must belong to either the Go Client API contract or the
-Engine API contract; those contracts are intentionally different.
+[`Engine API contract`](./ENGINE_API.md); those contracts are intentionally
+different.
 
 Conformance is established by executing canonical vectors in
 [`test-vectors/`](./test-vectors/), not by code inspection. Every `.bin` file

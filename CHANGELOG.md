@@ -6,6 +6,13 @@ through capabilities.
 
 ## 2026-07-22
 
+- Defined the language-neutral Engine API contract for endpoint lifecycle,
+  isolated sessions, engine-side handshake negotiation, security, callbacks,
+  and correlated and uncorrelated sends.
+- Declared process startup, shutdown decisions, restart policy, application
+  semantics, and a `Runner` equivalent outside the Engine API contract.
+- Corrected the project overview to distinguish the Go Client API from the four
+  engine SDKs and to reflect the alpha version 1 platform-native protocol.
 - Returned the unreleased specification to alpha status and protocol version 1.
 - Replaced the cross-platform Unix socket requirement with Unix domain sockets
   on Linux/macOS and Named Pipes on Windows so every supported runtime can use
