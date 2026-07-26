@@ -1,6 +1,6 @@
 {
   "description": "Correlated JSON request with correlation_id 42.",
-  "context": { "negotiated_capabilities": "0x000001 (CAP_CORRELATION)" },
+  "context": { "encoding": "JSON", "negotiated_capabilities": "0x000001 (CAP_CORRELATION)" },
   "packet": {
     "size_bytes": 28,
     "byte_order": "Big-Endian",

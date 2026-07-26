@@ -4,6 +4,22 @@ Protocol revisions are recorded as dated change entries. The protocol version
 changes only for incompatible wire breaks; additive features are negotiated
 through capabilities.
 
+## 2026-07-26
+
+- Corrected the four fragmentation vectors so their reassembled payload is a
+  valid JSON string, `"Hello World"`, instead of bytes that no negotiated
+  encoding can decode.
+- Regenerated `frame_fragment_first.bin`, `frame_fragment_last.bin`,
+  `frame_fragment_correlated_first.bin`, and `frame_fragment_correlated_last.bin`
+  with the new lengths and fragment data, and realigned every companion
+  annotation.
+- Added an explicit `context.encoding` field to every application-frame vector
+  annotation so each vector is a complete decode oracle on its own.
+- Stated in the status-code boundary that an application payload undecodable
+  with the session's negotiated encoding after reassembly is
+  `ERR_PROTOCOL_VIOLATION (403)`, resolving the latent conflict between the
+  reassembly and malformed-payload conformance cases.
+
 ## 2026-07-23
 
 - Defined the numbered Engine Conformance Suite as the shared acceptance

@@ -1,17 +1,17 @@
 {
   "description": "Final uncorrelated fragment for fragment_id 1.",
+  "context": { "encoding": "JSON", "preceded_by": "frame_fragment_first.bin" },
   "packet": {
-    "size_bytes": 16,
+    "size_bytes": 17,
     "byte_order": "Big-Endian",
-    "hex": "0000000A03030000000120576F726C64",
+    "hex": "0000000B03030000000120576F726C6422",
     "fields": [
-      { "name": "payload_length", "offset": 0, "size": 4, "value": 10 },
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 11 },
       { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
       { "name": "flags", "offset": 5, "size": 1, "value": "0x03 (FLAG_FRAGMENT | FLAG_LAST_FRAG)" },
       { "name": "fragment_id", "offset": 6, "size": 4, "value": 1 },
-      { "name": "fragment_data", "offset": 10, "size": 6, "value_utf8": " World" }
+      { "name": "fragment_data", "offset": 10, "size": 7, "value_utf8": " World\"" }
     ]
   },
-  "context": { "preceded_by": "frame_fragment_first.bin" },
-  "expected": "Dispatch the reassembled UTF-8 payload Hello World."
+  "expected": "Dispatch the reassembled payload, the decoded JSON string Hello World."
 }

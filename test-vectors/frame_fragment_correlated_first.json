@@ -1,17 +1,17 @@
 {
   "description": "First correlated fragment demonstrating fragment_id before correlation_id.",
-  "context": { "negotiated_capabilities": "0x000001 (CAP_CORRELATION)" },
+  "context": { "encoding": "JSON", "negotiated_capabilities": "0x000001 (CAP_CORRELATION)" },
   "packet": {
-    "size_bytes": 19,
+    "size_bytes": 20,
     "byte_order": "Big-Endian",
-    "hex": "0000000D0305000000070000002A48656C6C6F",
+    "hex": "0000000E0305000000070000002A2248656C6C6F",
     "fields": [
-      { "name": "payload_length", "offset": 0, "size": 4, "value": 13 },
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 14 },
       { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
       { "name": "flags", "offset": 5, "size": 1, "value": "0x05 (FLAG_FRAGMENT | FLAG_CORRELATED)" },
       { "name": "fragment_id", "offset": 6, "size": 4, "value": 7 },
       { "name": "correlation_id", "offset": 10, "size": 4, "value": 42 },
-      { "name": "fragment_data", "offset": 14, "size": 5, "value_utf8": "Hello" }
+      { "name": "fragment_data", "offset": 14, "size": 6, "value_utf8": "\"Hello" }
     ]
   },
   "expected": "Buffer data under fragment_id 7 and correlation_id 42 without dispatching it."

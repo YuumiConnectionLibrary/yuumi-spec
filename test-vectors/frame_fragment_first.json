@@ -1,15 +1,16 @@
 {
   "description": "First uncorrelated fragment for fragment_id 1.",
+  "context": { "encoding": "JSON" },
   "packet": {
-    "size_bytes": 15,
+    "size_bytes": 16,
     "byte_order": "Big-Endian",
-    "hex": "0000000903010000000148656C6C6F",
+    "hex": "0000000A0301000000012248656C6C6F",
     "fields": [
-      { "name": "payload_length", "offset": 0, "size": 4, "value": 9 },
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 10 },
       { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
       { "name": "flags", "offset": 5, "size": 1, "value": "0x01 (FLAG_FRAGMENT)" },
       { "name": "fragment_id", "offset": 6, "size": 4, "value": 1 },
-      { "name": "fragment_data", "offset": 10, "size": 5, "value_utf8": "Hello" }
+      { "name": "fragment_data", "offset": 10, "size": 6, "value_utf8": "\"Hello" }
     ]
   },
   "expected": "Buffer the fragment and wait for FLAG_LAST_FRAG."

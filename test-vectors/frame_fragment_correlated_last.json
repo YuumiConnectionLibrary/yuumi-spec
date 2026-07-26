@@ -1,21 +1,22 @@
 {
   "description": "Final correlated fragment repeating both identifiers in the required prefix order.",
   "context": {
+    "encoding": "JSON",
     "negotiated_capabilities": "0x000001 (CAP_CORRELATION)",
     "preceded_by": "frame_fragment_correlated_first.bin"
   },
   "packet": {
-    "size_bytes": 20,
+    "size_bytes": 21,
     "byte_order": "Big-Endian",
-    "hex": "0000000E0307000000070000002A20576F726C64",
+    "hex": "0000000F0307000000070000002A20576F726C6422",
     "fields": [
-      { "name": "payload_length", "offset": 0, "size": 4, "value": 14 },
+      { "name": "payload_length", "offset": 0, "size": 4, "value": 15 },
       { "name": "channel", "offset": 4, "size": 1, "value": "0x03 (Data)" },
       { "name": "flags", "offset": 5, "size": 1, "value": "0x07 (FLAG_FRAGMENT | FLAG_LAST_FRAG | FLAG_CORRELATED)" },
       { "name": "fragment_id", "offset": 6, "size": 4, "value": 7 },
       { "name": "correlation_id", "offset": 10, "size": 4, "value": 42 },
-      { "name": "fragment_data", "offset": 14, "size": 6, "value_utf8": " World" }
+      { "name": "fragment_data", "offset": 14, "size": 7, "value_utf8": " World\"" }
     ]
   },
-  "expected": "Dispatch reassembled data Hello World as the correlated message with correlation_id 42."
+  "expected": "Dispatch the reassembled payload, the decoded JSON string Hello World, as the correlated message with correlation_id 42."
 }

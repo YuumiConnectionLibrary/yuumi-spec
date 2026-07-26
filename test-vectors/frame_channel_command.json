@@ -1,5 +1,6 @@
 {
   "description": "Complete uncorrelated JSON command frame.",
+  "context": { "encoding": "JSON" },
   "packet": {
     "size_bytes": 24,
     "byte_order": "Big-Endian",

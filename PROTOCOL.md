@@ -441,8 +441,9 @@ Status codes are structured diagnostics used locally and in Control errors.
 The boundary among `403`, `413`, and `415` is strict:
 
 - use `403` for invalid structure or state, including invalid flags, a short
-  prefix, invalid channel, inconsistent fragments, invalid ACK, or malformed
-  Control JSON;
+  prefix, invalid channel, inconsistent fragments, invalid ACK, malformed
+  Control JSON, or an application payload that cannot be decoded with the
+  session's negotiated encoding after successful reassembly;
 - use `413` only when otherwise parseable length information exceeds the frame
   or reassembled-message bound; never allocate the oversized buffer;
 - use `415` only when a syntactically valid encoding advertisement has no

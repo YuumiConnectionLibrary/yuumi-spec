@@ -1,6 +1,7 @@
 {
   "description": "Correlated JSON response repeating correlation_id 42.",
   "context": {
+    "encoding": "JSON",
     "negotiated_capabilities": "0x000001 (CAP_CORRELATION)",
     "pending_request": "frame_correlated_request.bin"
   },
