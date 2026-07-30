@@ -4,6 +4,38 @@ Protocol revisions are recorded as dated change entries. The protocol version
 changes only for incompatible wire breaks; additive features are negotiated
 through capabilities.
 
+## 2026-07-30
+
+- Confirmed all 25 canonical wire binaries and their SHA-256 values unchanged
+  after listener ownership inversion.
+- Added deterministic machine-readable vectors for Windows and Unix address
+  derivation, macOS pathname boundaries, and invalid configuration inputs.
+- Added a generated fixture manifest that classifies every wire vector and pins
+  exact binary and annotation hashes.
+- Replaced semantic-only CI checks with exact byte, address, manifest, and
+  protocol version 1 validation through `tools/vector_tool.py`.
+
+## 2026-07-29
+
+- Moved listener ownership to the Go client and defined every engine as a
+  transport dialer while preserving the Go-to-engine handshake direction.
+- Made the one-to-one topology mandatory and required Go to continue accepting
+  after rejecting an invalid engine candidate.
+- Moved endpoint creation, stale-endpoint cleanup, Unix permissions, and
+  Windows Named Pipe access control to Go.
+- Defined the macOS Unix socket pathname limit as 103 encoded bytes plus the
+  terminating NUL and replaced the clear Unix stem with the canonical compact
+  SHA-256-derived filename.
+- Required each endpoint to replace its opaque local generation for every
+  established session so stale operations cannot act on a later connection.
+- Added reproducible minimum-name, maximum-name, and macOS 103/104-byte address
+  examples shared by all five SDKs.
+- Realigned the Go Client API and both conformance suites around Go admission
+  and engine dialling without adding process lifecycle policy.
+- Kept protocol version `1` and every existing handshake, ACK, Control, and
+  frame vector byte unchanged; Task 02 only confirms them and adds address
+  derivation fixtures.
+
 ## 2026-07-26
 
 - Corrected the four fragmentation vectors so their reassembled payload is a
@@ -46,7 +78,8 @@ through capabilities.
 - Defined deterministic token-bearing endpoint addresses, stale endpoint
   detection, Unix permissions, and Windows pipe ACL requirements.
 - Added isolated multi-connection sessions with engine-assigned session IDs and
-  explicit reconnection state reset.
+  explicit reconnection state reset; listener inversion superseded the
+  multi-connection topology with mandatory 1:1 operation on 2026-07-29.
 - Replaced the handshake reserved bytes with a negotiated 24-bit capability
   mask and assigned the correlation capability.
 - Added request/response correlation, including deterministic prefix ordering

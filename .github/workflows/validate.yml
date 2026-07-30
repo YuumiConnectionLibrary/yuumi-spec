@@ -25,63 +25,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify all vectors have companion JSON
-        shell: bash
-        run: |
-          set -euo pipefail
-          for bin in test-vectors/*.bin; do
-            json="${bin%.bin}.json"
-            if [[ ! -f "$json" ]]; then
-              echo "Missing companion JSON for $bin"
-              exit 1
-            fi
-          done
-          echo "All vectors have companion JSON."
-
-      - name: Validate companion JSON is well-formed
-        shell: bash
-        run: |
-          set -euo pipefail
-          for f in test-vectors/*.json; do
-            python3 -c "import json, sys; json.load(open('$f'))" || { echo "Invalid JSON: $f"; exit 1; }
-          done
-          echo "All JSON files are valid."
-
-      - name: Validate handshake_valid.bin structure
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'EOF'
-          import struct
-
-          with open("test-vectors/handshake_valid.bin", "rb") as f:
-              data = f.read()
-
-          assert len(data) == 16, f"Expected 16 bytes, got {len(data)}"
-          magic, version, pid = struct.unpack(">III", data[:12])
-          assert magic == 0x59554D49, f"Bad magic: {magic:#010x}"
-          assert version == 2, f"Expected version 2, got {version}"
-          assert pid > 0, "PID must be > 0"
-          assert data[12] == 0x03, f"Expected EncodingCaps=0x03, got {data[12]:#04x}"
-          assert data[13:16] == b"\x00\x00\x00", "Reserved bytes must be 0x00"
-          print("handshake_valid.bin: OK")
-          EOF
-
-      - name: Validate frame_oversized.bin structure
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'EOF'
-          import struct
-
-          with open("test-vectors/frame_oversized.bin", "rb") as f:
-              data = f.read()
-
-          assert len(data) == 6, f"Expected 6 bytes header, got {len(data)}"
-          length = struct.unpack(">I", data[:4])[0]
-          cap = 16 * 1024 * 1024
-          assert length > cap, f"Expected length > {cap}, got {length}"
-          print(f"frame_oversized.bin: OK (declared length={length}, cap={cap})")
-          EOF
+      - name: Validate exact canonical fixtures
+        run: python3 tools/vector_tool.py
 
 # creato: 2026-05-25 | Validate spec | yuumi-spec

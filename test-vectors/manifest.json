@@ -1,0 +1,297 @@
+{
+  "description": "Canonical fixture inventory after listener ownership inversion.",
+  "generated_by": "tools/vector_tool.py --write",
+  "summary": {
+    "unchanged_wire_binaries": 25,
+    "modified_wire_binaries": 0,
+    "new_wire_binaries": 0,
+    "removed_wire_binaries": 0,
+    "new_address_fixtures": 1
+  },
+  "wire_vectors": [
+    {
+      "file": "ack_cap_correlation.bin",
+      "size": 4,
+      "sha256": "afa7518106309c22d325df6d2663249d158d2f36f1976269d6d4104d9198a108",
+      "annotation": "ack_cap_correlation.json",
+      "annotation_size": 727,
+      "annotation_sha256": "120117e9071430d7b178c7a481630882c6f4950fd354472268d62a7cd9f4b7e0",
+      "classification": "unchanged",
+      "reason": "The 4-byte ACK layout and capability intersection are unchanged.",
+      "purpose": "Capability intersection case where both endpoints support correlation."
+    },
+    {
+      "file": "ack_capabilities_none.bin",
+      "size": 4,
+      "sha256": "67abdd721024f0ff4e0b3f4c2fc13bc5bad42d0b7851d456d88d203d15aaa450",
+      "annotation": "ack_capabilities_none.json",
+      "annotation_size": 692,
+      "annotation_sha256": "14e2e60f6ea8715c721d7b9f070403793e08488e2f25c76617e84e6743d9603c",
+      "classification": "unchanged",
+      "reason": "The 4-byte ACK layout and capability intersection are unchanged.",
+      "purpose": "Capability intersection case where only the client supports correlation."
+    },
+    {
+      "file": "ack_json.bin",
+      "size": 4,
+      "sha256": "67abdd721024f0ff4e0b3f4c2fc13bc5bad42d0b7851d456d88d203d15aaa450",
+      "annotation": "ack_json.json",
+      "annotation_size": 490,
+      "annotation_sha256": "5cc3ef0629b980b121c7128f3f80e8be51aa65b75a95c0fc8766fcf63e3f9a61",
+      "classification": "unchanged",
+      "reason": "The 4-byte ACK layout and capability intersection are unchanged.",
+      "purpose": "Successful 4-byte ACK selecting JSON with no negotiated additive capabilities."
+    },
+    {
+      "file": "ack_msgpack.bin",
+      "size": 4,
+      "sha256": "26b25d457597a7b0463f9620f666dd10aa2c4373a505967c7c8d70922a2d6ece",
+      "annotation": "ack_msgpack.json",
+      "annotation_size": 511,
+      "annotation_sha256": "7001e5c83d2c2c6408157a86b0e9369b5242c30734cc6817821c359fa3ad8900",
+      "classification": "unchanged",
+      "reason": "The 4-byte ACK layout and capability intersection are unchanged.",
+      "purpose": "Successful 4-byte ACK selecting MessagePack with no negotiated additive capabilities."
+    },
+    {
+      "file": "ack_unadvertised_capability.bin",
+      "size": 4,
+      "sha256": "afa7518106309c22d325df6d2663249d158d2f36f1976269d6d4104d9198a108",
+      "annotation": "ack_unadvertised_capability.json",
+      "annotation_size": 707,
+      "annotation_sha256": "a40671116ac25e261407e3e65e48222895a325741e60d6062f7f37b44f049af9",
+      "classification": "unchanged",
+      "reason": "The 4-byte ACK layout and capability intersection are unchanged.",
+      "purpose": "ACK rejection case where the engine returns a capability the client did not advertise."
+    },
+    {
+      "file": "control_error.bin",
+      "size": 63,
+      "sha256": "550ea5972ffe13346a1b4d1ff24f94c23ff2693bce46aa7f23ea5939cdb0e685",
+      "annotation": "control_error.json",
+      "annotation_size": 807,
+      "annotation_sha256": "a160c1cb67e8e2c1c868be5064129e86e1d5a179b07ad2fd4856f88ce9804c9a",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "JSON Control error for a payload-size violation."
+    },
+    {
+      "file": "control_heartbeat.bin",
+      "size": 45,
+      "sha256": "1aa07e0ed6ad4b22930f7eb47a49ad572063c3788cbf43fe50a01e1a0aa1794b",
+      "annotation": "control_heartbeat.json",
+      "annotation_size": 711,
+      "annotation_sha256": "40486f0b383d65feae64051df05e94cb907a36062e2dc3abf79c4fd6adbb8a1b",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "Uncorrelated JSON heartbeat Control frame."
+    },
+    {
+      "file": "control_ping.bin",
+      "size": 29,
+      "sha256": "647da8934ea1d0892f8e46417c03076442e9693d24366a55d55485244ae2584c",
+      "annotation": "control_ping.json",
+      "annotation_size": 652,
+      "annotation_sha256": "de66a6b5006f391899054e72ba83cf307752b2bee156bf2706621930d3b66122",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "Uncorrelated JSON ping Control frame with sequence 1."
+    },
+    {
+      "file": "control_pong.bin",
+      "size": 29,
+      "sha256": "fee7bccecc43483163c56628c3a66ccc55d6b8a0c841fab12c433a68f0becf37",
+      "annotation": "control_pong.json",
+      "annotation_size": 639,
+      "annotation_sha256": "a4ad324457501afa181ac0d4739ec8b8a49d7f44b30868d0fcaa600f436196e2",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "Uncorrelated JSON pong Control frame echoing sequence 1."
+    },
+    {
+      "file": "control_session.bin",
+      "size": 52,
+      "sha256": "9493d40688d54d3c2214f407811244024a3498c1c1664f6986cbc00b0256223c",
+      "annotation": "control_session.json",
+      "annotation_size": 866,
+      "annotation_sha256": "6c64246b5fd3c47f62cf806c857f622dacec7c0c866ff5c1d4c71930a3078104",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "First post-ACK Control frame assigning the engine-generated session identifier."
+    },
+    {
+      "file": "control_session_empty_id.bin",
+      "size": 40,
+      "sha256": "434f38cfaf701a9099f2e5f6dc577c781fbc8fa12bfa8d7d658ee328fe7d5cda",
+      "annotation": "control_session_empty_id.json",
+      "annotation_size": 815,
+      "annotation_sha256": "0b9a450c53a1d8fe6744db12e7bed3b98546bea993e33de52145c08c9f863479",
+      "classification": "unchanged",
+      "reason": "Control framing and JSON payload bytes are unchanged.",
+      "purpose": "Session assignment rejection case with an empty session_id."
+    },
+    {
+      "file": "frame_channel_command.bin",
+      "size": 24,
+      "sha256": "d6f82feb838e179c1682d4ec791b32a2cdf0d600f9a1970094efd8484100bf89",
+      "annotation": "frame_channel_command.json",
+      "annotation_size": 649,
+      "annotation_sha256": "47ff23321ef0d915617ae0ddb7e805388005155617d64c07442489c62fe3ccd1",
+      "classification": "unchanged",
+      "reason": "Frame layout, channel, flags, encoding, and limits are unchanged.",
+      "purpose": "Complete uncorrelated JSON command frame."
+    },
+    {
+      "file": "frame_correlated_not_negotiated.bin",
+      "size": 28,
+      "sha256": "cece75dae7c26e14f7713456dde78c6943d25cc8b24579aa863a37ff4d462db9",
+      "annotation": "frame_correlated_not_negotiated.json",
+      "annotation_size": 870,
+      "annotation_sha256": "02f8bcfafbb09d405c63344d3e23160abd65aa79a9823b1a8c2e617e88bd88cb",
+      "classification": "unchanged",
+      "reason": "Correlation framing and identifiers are unchanged.",
+      "purpose": "Correlation rejection case: FLAG_CORRELATED is used without negotiated CAP_CORRELATION."
+    },
+    {
+      "file": "frame_correlated_request.bin",
+      "size": 28,
+      "sha256": "cece75dae7c26e14f7713456dde78c6943d25cc8b24579aa863a37ff4d462db9",
+      "annotation": "frame_correlated_request.json",
+      "annotation_size": 833,
+      "annotation_sha256": "d42eb9205bcdc5e28384118e6e15d30d32ae8297b82f5c151f51658dd587cc7f",
+      "classification": "unchanged",
+      "reason": "Correlation framing and identifiers are unchanged.",
+      "purpose": "Correlated JSON request with correlation_id 42."
+    },
+    {
+      "file": "frame_correlated_response.bin",
+      "size": 21,
+      "sha256": "d0d76280c903ee05c7e3137cdc60adbfdb17e9332a1f05f62dd391804e6764f1",
+      "annotation": "frame_correlated_response.json",
+      "annotation_size": 853,
+      "annotation_sha256": "5de5038ae19d55ae06325c8d21ebd088b1f4b86e70b48fc7ae79359f5bf4dc6a",
+      "classification": "unchanged",
+      "reason": "Correlation framing and identifiers are unchanged.",
+      "purpose": "Correlated JSON response repeating correlation_id 42."
+    },
+    {
+      "file": "frame_fragment_correlated_first.bin",
+      "size": 20,
+      "sha256": "44ecb0345d2dd16ba3c4f34ae4d9e2af0369c77c7db00b6585a23caec6a2591b",
+      "annotation": "frame_fragment_correlated_first.json",
+      "annotation_size": 916,
+      "annotation_sha256": "d27f3cb1697388fed1f1886b78399139818996f6c05d338eccdf2a8177eb0994",
+      "classification": "unchanged",
+      "reason": "Fragmentation and prefix ordering bytes are unchanged.",
+      "purpose": "First correlated fragment demonstrating fragment_id before correlation_id."
+    },
+    {
+      "file": "frame_fragment_correlated_last.bin",
+      "size": 21,
+      "sha256": "2ea522c6306b054c1c08e1a5964123537c5ae5abc60cfa92ac72535b78c8b3f4",
+      "annotation": "frame_fragment_correlated_last.json",
+      "annotation_size": 1055,
+      "annotation_sha256": "48321393de3e8ca7d90acce02fa4a876a7fe941f0b31d02abd6b3f223d0cacc0",
+      "classification": "unchanged",
+      "reason": "Fragmentation and prefix ordering bytes are unchanged.",
+      "purpose": "Final correlated fragment repeating both identifiers in the required prefix order."
+    },
+    {
+      "file": "frame_fragment_first.bin",
+      "size": 16,
+      "sha256": "f290de863239790443e3aa4e98cc54e2f4c787761cdf4b54d71e48dcad877221",
+      "annotation": "frame_fragment_first.json",
+      "annotation_size": 702,
+      "annotation_sha256": "2981fa3b9e1e76649a6e875c96075b0de51c62565d8cab41df8e8177c20ecec3",
+      "classification": "unchanged",
+      "reason": "Fragmentation and prefix ordering bytes are unchanged.",
+      "purpose": "First uncorrelated fragment for fragment_id 1."
+    },
+    {
+      "file": "frame_fragment_last.bin",
+      "size": 17,
+      "sha256": "0dfca1c1109d9b6841f5ead6d401cd4e3fda7256b66bcf99b1ef5c36f034d04c",
+      "annotation": "frame_fragment_last.json",
+      "annotation_size": 787,
+      "annotation_sha256": "06f2982cdc9c3fe944a1ddc134130a4eca76df3ceec7866cfb835254ca58fc19",
+      "classification": "unchanged",
+      "reason": "Fragmentation and prefix ordering bytes are unchanged.",
+      "purpose": "Final uncorrelated fragment for fragment_id 1."
+    },
+    {
+      "file": "frame_oversized.bin",
+      "size": 6,
+      "sha256": "cadb8048d389403a76d11dc0bbd99cb34b0b79245cd53ab5bab530bc7240d423",
+      "annotation": "frame_oversized.json",
+      "annotation_size": 643,
+      "annotation_sha256": "bdd9aa2e2921ea6c765810d0e4bbb9ec319e4f9e1c74874431bcd8f5c2d1b026",
+      "classification": "unchanged",
+      "reason": "Frame layout, channel, flags, encoding, and limits are unchanged.",
+      "purpose": "Header-only rejection vector declaring a payload one byte above the 16 MiB limit."
+    },
+    {
+      "file": "handshake_bad_magic.bin",
+      "size": 16,
+      "sha256": "95454924da281ed974f117f80899b8fde070cb912cf59e1a6c6fe748b3f02390",
+      "annotation": "handshake_bad_magic.json",
+      "annotation_size": 730,
+      "annotation_sha256": "d3ec54e3243fddf3a337967a56c038f867ae9c0a1f512c9fbba93205e31f63d8",
+      "classification": "unchanged",
+      "reason": "Protocol version and 16-byte handshake layout are unchanged.",
+      "purpose": "Handshake rejection case with invalid magic and otherwise valid version 1 fields."
+    },
+    {
+      "file": "handshake_bad_version.bin",
+      "size": 16,
+      "sha256": "e37d1fd0ee5ad10c6e172cd76e2c70ebd9f4f46affd47ebcc43139872edd4976",
+      "annotation": "handshake_bad_version.json",
+      "annotation_size": 720,
+      "annotation_sha256": "fa851199448c0d028a9f3cd58da4bd9a45b434ab2274f5e988e2e211c24363dd",
+      "classification": "unchanged",
+      "reason": "Protocol version and 16-byte handshake layout are unchanged.",
+      "purpose": "Handshake rejection case with incompatible protocol version 0."
+    },
+    {
+      "file": "handshake_cap_correlation.bin",
+      "size": 16,
+      "sha256": "4bfe6dc42e0d2c0d3bd05b3c94984afee5749ccfec39109d993db80f3e26703a",
+      "annotation": "handshake_cap_correlation.json",
+      "annotation_size": 804,
+      "annotation_sha256": "fdb699d738852051e9707027b0e5243ce69cb71adfd8530618b0cb9a6e19572c",
+      "classification": "unchanged",
+      "reason": "Protocol version and 16-byte handshake layout are unchanged.",
+      "purpose": "Valid version 1 handshake advertising request/response correlation."
+    },
+    {
+      "file": "handshake_encoding_unsupported.bin",
+      "size": 16,
+      "sha256": "d9cd02cf1b464c388a756b392edcb4d9dd2c05be40637aa147b59a91c9204d1d",
+      "annotation": "handshake_encoding_unsupported.json",
+      "annotation_size": 844,
+      "annotation_sha256": "f3df99016d50dbbfe8ac88b278a3fc3b906c286ed3ab8bf06d2378a53137306f",
+      "classification": "unchanged",
+      "reason": "Protocol version and 16-byte handshake layout are unchanged.",
+      "purpose": "Encoding rejection case: the client offers MessagePack while the engine context supports JSON only."
+    },
+    {
+      "file": "handshake_valid.bin",
+      "size": 16,
+      "sha256": "5e3f972778c92182e953252ab923b51e1c0a670bbdca9f8968b9c014a84116e0",
+      "annotation": "handshake_valid.json",
+      "annotation_size": 761,
+      "annotation_sha256": "ebe5f9932c0769dbbc634e2308b356265e4c9bee9451432660a1cca6e465671b",
+      "classification": "unchanged",
+      "reason": "Protocol version and 16-byte handshake layout are unchanged.",
+      "purpose": "Valid protocol version 1 handshake with JSON and MessagePack support and no additive capabilities."
+    }
+  ],
+  "address_vectors": [
+    {
+      "file": "address_derivation.json",
+      "size": 6043,
+      "sha256": "4fc36dc7862c78b02c24f96ec0d896a1b0a7de76ec31a5e98aadd8868b5b7d3c",
+      "classification": "new",
+      "reason": "Task 01 introduced canonical compact Unix address derivation and byte limits."
+    }
+  ]
+}

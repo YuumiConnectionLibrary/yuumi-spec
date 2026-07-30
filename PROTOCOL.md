@@ -21,8 +21,10 @@ Yuumi provides a platform-native local stream, a fixed handshake and ACK,
 per-session negotiation, four logical channels, optional request/response
 correlation, bounded fragmentation, and JSON Control messages.
 
-The engine accepts one or more connections. Each accepted connection becomes an
-independent session after a successful handshake, ACK, and session assignment.
+Go opens and owns the listener. An engine connects as a dialer and is only a
+candidate until the handshake, ACK, and session assignment complete
+successfully. The listener permits exactly one established engine session at a
+time.
 
 ---
 
@@ -50,66 +52,153 @@ Address derivation takes two application-provided values:
   produced by a cryptographically secure random generator.
 
 Neither value is case-folded, Unicode-normalized, truncated, or otherwise
-rewritten. An invalid value **MUST** be rejected before any endpoint is opened.
-The canonical endpoint stem is:
+rewritten. Both values **MUST** be validated before any transport address is
+derived or used.
+
+On Windows, the canonical address is:
 
 ```text
-yuumi-<endpoint_name>-<token>
+\\.\pipe\yuumi-<endpoint_name>-<token>
 ```
 
-| Platform | Address |
-|---|---|
-| Linux / macOS | `<os_temp_dir>/<canonical_stem>.sock` |
-| Windows | `\\.\pipe\<canonical_stem>` |
+On Linux and macOS, the canonical filename is:
+
+```text
+yuumi-<digest>.sock
+```
+
+`digest` is the first 32 lowercase hexadecimal characters of:
+
+```text
+SHA-256(UTF-8("yuumi") || 0x00 || UTF-8(endpoint_name) || 0x00 || UTF-8(token))
+```
+
+Each `0x00` is exactly one zero byte. The hexadecimal digest is computed from
+the 32-byte SHA-256 result in its normal byte order, using two lowercase
+characters per byte, and is then truncated to its first 32 characters. The
+token therefore participates in Unix address derivation without appearing in
+clear text in the pathname.
 
 `<os_temp_dir>` **MUST** come from the platform temporary-directory API. SDKs
-**MUST NOT** hardcode `/tmp`, `/var/tmp`, `%TEMP%`, or another directory. The
-path separator is inserted exactly once. If the encoded Unix socket address is
-too long for the platform socket-address structure, endpoint creation **MUST**
-fail explicitly; an SDK **MUST NOT** truncate or hash it independently.
+**MUST NOT** hardcode `/tmp`, `/var/tmp`, `%TEMP%`, or another directory. To
+compose the Unix address, remove every trailing `/` byte from `<os_temp_dir>`,
+then concatenate one `/` byte and `yuumi-<digest>.sock`. This also maps the root
+directory `/` to `/yuumi-<digest>.sock` and guarantees exactly one separator.
+
+The complete Unix pathname **MUST** be encoded with the platform filesystem
+encoding and validated in bytes, not characters, before `listen` or `dial`.
+On macOS, the encoded pathname plus its terminating NUL **MUST** fit the
+104-byte `sun_path` field, so the encoded pathname is at most 103 bytes. An
+address too long for the platform socket-address structure **MUST** fail as a
+configuration error; an SDK **MUST NOT** truncate, relocate, or apply another
+hash.
 
 For the same platform, `endpoint_name`, `token`, and OS temporary directory, all
-SDKs **MUST** produce byte-identical addresses. The token is part of the address
-and access-control model. It **SHOULD** be redacted from diagnostics that do not
-need the complete address.
+five SDKs **MUST** produce byte-identical addresses. The token is part of the
+address and access-control model. It **SHOULD** be redacted from diagnostics
+that do not need the complete address.
+
+#### 2.1.1 Canonical address examples
+
+The following examples are reproducible. Byte counts are UTF-8 byte counts;
+all characters shown are ASCII. Their deterministic tokens are fixtures for
+address conformance and **MUST NOT** be reused as production access tokens.
+
+| Case | `endpoint_name` | `token` | SHA-256 prefix (`digest`) |
+|---|---|---|---|
+| Minimum name | `a` | `000102030405060708090a0b0c0d0e0f` | `c3da2f7decb02b7a24e054711453a85c` |
+| Maximum 32-byte name | `ABCDEFGHIJKLMNOPQRSTUVWXYZ012345` | `f0e0d0c0b0a090807060504030201000` | `a9ce40da7198349aab024f107b698ef4` |
+
+For the minimum-name case:
+
+```text
+Windows:
+\\.\pipe\yuumi-a-000102030405060708090a0b0c0d0e0f
+
+Unix filename:
+yuumi-c3da2f7decb02b7a24e054711453a85c.sock
+
+Unix address when os_temp_dir is /tmp:
+/tmp/yuumi-c3da2f7decb02b7a24e054711453a85c.sock
+```
+
+For the maximum-name case:
+
+```text
+Windows:
+\\.\pipe\yuumi-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345-f0e0d0c0b0a090807060504030201000
+
+Unix filename:
+yuumi-a9ce40da7198349aab024f107b698ef4.sock
+```
+
+The compact Unix filename is always 43 bytes: 6 bytes for `yuumi-`, 32 for the
+digest, and 5 for `.sock`. The macOS worst-case budget is therefore:
+
+```text
+59-byte os_temp_dir + 1-byte separator + 43-byte filename = 103 bytes
+```
+
+Using the minimum-name digest, this 59-byte temporary directory is the longest
+accepted example:
+
+```text
+/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T
+```
+
+It produces this exactly 103-byte pathname:
+
+```text
+/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T/yuumi-c3da2f7decb02b7a24e054711453a85c.sock
+```
+
+Adding one `b` makes the directory 60 bytes and the complete pathname 104
+bytes. Go **MUST** fail before opening the listener, and every engine **MUST**
+fail before dialing; the terminating NUL would otherwise require byte 105 of
+the 104-byte `sun_path` field.
 
 ### 2.2 Endpoint presence and stale endpoints
 
-Endpoint presence is not evidence that an engine is alive. Liveness is tested
-only by attempting a connection.
+Endpoint presence is not evidence that a Go listener is alive. Liveness is
+tested only by attempting a connection.
 
-- A successful connection means the endpoint is live. A second engine
+- A successful connection means the endpoint is live. A second Go listener
   **MUST NOT** replace it.
 - A transient condition such as a busy Named Pipe **MUST NOT** be classified as
-  stale while a server instance can still accept connections.
+  stale while a listener instance can still accept connections.
 - If the connection is refused because no live listener owns the endpoint, the
-  endpoint is stale and the engine **MUST** remove or release it before
-  recreating it.
+  endpoint is stale and Go **MUST** remove or release it before recreating it.
 - On Unix, removal means unlinking the stale socket node after the refused
   connection and before binding.
-- On Windows, Named Pipe objects disappear when their final server handle is
-  closed. Re-creation means closing any stale handle owned by the process and
-  creating a fresh server instance with the same canonical name; there is no
-  filesystem node to unlink.
+- On Windows, Named Pipe objects disappear when their final listener handle is
+  closed. Re-creation means Go closes any stale handle it owns and creates a
+  fresh listener with the same canonical name; there is no filesystem node to
+  unlink.
 
-An engine **MUST** remove or release its endpoint during orderly shutdown.
+Go **MUST** remove or release its endpoint during orderly listener shutdown.
 
 ---
 
 ## 3. Connection lifecycle
 
 ```text
-Go client                               Engine
+Go client and listener                  Engine dialer
     |                                     |
+    | [open and protect endpoint]          |
+    |<-- Connect --------------------------|
+    | [accept candidate]                   |
     |--- Handshake (16 bytes) ----------->|
     |                                     | validate and negotiate
     |<-- ACK (4 bytes) -------------------|
     |<-- Control: session ----------------|
-    |                                     |
+    | [session established]                |
     |<== Per-session frames =============>|
     |                                     |
     |--- Close -------------------------->|
 ```
+
+Go **MUST** send the handshake after accepting the engine candidate. Listener
+ownership does not reverse the handshake direction.
 
 The engine **MUST** send the session Control message immediately after the ACK
 and before any other frame. The client **MUST** receive it before treating the
@@ -208,12 +297,16 @@ outside the client mask is a protocol violation. The client **MUST** close.
 
 ## 7. Sessions
 
-The engine accepts up to its configured `max_sessions` simultaneous
-connections. `max_sessions = 1` provides one-to-one operation; a greater value
-allows multiple Go clients to share one engine. The limit is engine policy and
-is not negotiated on the wire.
+Each Go listener permits exactly one established engine session at a time. This
+one-to-one limit is mandatory and is not configurable or negotiated on the
+wire. Go **MUST** accept and evaluate one engine candidate at a time, and only
+while no session is established. A candidate becomes the established session
+only after its handshake, ACK, and session assignment succeed. If a candidate
+fails transport authentication, disconnects, returns an invalid ACK, or sends
+an invalid session assignment, Go **MUST** close it and continue accepting
+candidates; rejection does not consume the session slot.
 
-Each connection has isolated session state:
+The established connection has isolated session state:
 
 - selected encoding and negotiated capabilities;
 - heartbeat timers and counters;
@@ -223,20 +316,20 @@ Each connection has isolated session state:
 - local connection `epoch`.
 
 Channels are scoped to a session. The same channel number, fragment identifier,
-or correlation identifier in two sessions refers to unrelated state.
+or correlation identifier in two sequential sessions refers to unrelated
+state.
 
 ### 7.1 Session assignment
 
-After the ACK, the engine assigns an opaque identifier unique among its active
-sessions and sends:
+After the ACK, the engine assigns an opaque identifier to the new session and
+sends:
 
 ```json
 { "type": "session", "session_id": "01J4Y7M9K2P6V3N8Q5R0T1WXYZ" }
 ```
 
 `session_id` is a non-empty printable ASCII string of at most 128 bytes. Clients
-**MUST** treat it as opaque. Reusing an identifier while its previous session is
-active is a protocol violation.
+**MUST** treat it as opaque.
 
 ### 7.2 Reconnection
 
@@ -246,11 +339,13 @@ A connection established after a disconnect is a new session, not a continuation
 - encoding and capabilities are negotiated again;
 - both endpoints start with empty fragment and pending-correlation state;
 - the engine assigns a new `session_id`;
-- the reconnecting SDK increments its local `epoch` generation counter.
+- both endpoints replace their local `epoch` generation.
 
-`epoch` is local SDK state and is not transmitted. Its initial value is zero;
-each successfully established replacement connection increments it by one. An
-SDK **MUST NOT** use the old session negotiated state or buffers after close.
+`epoch` is opaque local SDK state and is not transmitted. Each endpoint
+**MUST** replace it for every successfully established session. A request,
+responder, timeout, callback, or send operation created in an earlier epoch
+**MUST NOT** act on a later connection. An SDK **MUST NOT** use old negotiated
+state or buffers after close.
 
 ---
 
@@ -427,7 +522,7 @@ Status codes are structured diagnostics used locally and in Control errors.
 | 202 | `OK_HEARTBEAT` | Heartbeat acknowledged |
 | 400 | `ERR_MAGIC_MISMATCH` | Handshake magic invalid |
 | 401 | `ERR_VERSION_MISMATCH` | Protocol version incompatible |
-| 402 | `ERR_PID_MISMATCH` | Optional PID check rejected the client |
+| 402 | `ERR_PID_MISMATCH` | Optional PID check rejected a peer |
 | 403 | `ERR_PROTOCOL_VIOLATION` | Structurally invalid or inconsistent protocol data |
 | 404 | `ERR_FRAGMENT_TIMEOUT` | Fragment sequence timed out and was discarded |
 | 413 | `ERR_PAYLOAD_TOO_LARGE` | Frame or cumulative message exceeds 16 MiB |
@@ -462,17 +557,22 @@ local processes guessing it.
 
 This does not replace OS access controls:
 
-- on Linux and macOS, the engine **MUST** create the socket node with mode
-  `0600` for the owning user;
-- on Windows, the engine **MUST** apply a Named Pipe ACL restricted to the
-  intended local user and **MUST** reject remote pipe clients;
-- token and endpoint permissions **MUST** be in place before handshake traffic.
+- on Linux and macOS, Go **MUST** create the socket node with mode `0600` for
+  the owning user;
+- on Windows, Go **MUST** apply a Named Pipe ACL restricted to the intended
+  local user and **MUST** reject remote pipe clients;
+- Go **MUST** put the token and endpoint permissions in place before accepting
+  traffic.
 
-The PID is not authentication. An engine MAY configure `expected_pid` as an
-additional check. A mismatch closes without ACK and surfaces
-`ERR_PID_MISMATCH (402)`. If the OS exposes trustworthy peer credentials, the
-engine SHOULD compare them with the handshake PID. Multiple sessions do not
-share one mandatory expected PID.
+The handshake PID identifies the Go process and is not authentication. If the
+OS exposes trustworthy server credentials, the engine **SHOULD** compare them
+with the handshake PID. An engine mismatch closes without ACK and surfaces
+`ERR_PID_MISMATCH (402)`.
+
+Go **MAY** configure an expected engine PID as an additional candidate check
+when the OS exposes trustworthy client credentials. A mismatch closes the
+candidate before handshake, surfaces `ERR_PID_MISMATCH (402)` locally, and
+**MUST NOT** consume the session slot.
 
 ---
 
@@ -509,11 +609,18 @@ Conformance is established by executing canonical vectors in
 has a same-basename `.json` annotation containing its exact hexadecimal bytes,
 field offsets, context, and expected outcome.
 
-The C++, Python, Rust, and TypeScript engines use the canonical vectors through
-the numbered [`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). That suite
-is the common acceptance criterion for the Engine API implementations.
+The Go client uses the numbered
+[`Client Conformance Suite`](./CLIENT_CONFORMANCE.md). The C++, Python, Rust,
+and TypeScript engines use the numbered
+[`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). Those suites are the
+role-specific acceptance criteria for all five SDKs.
 
 ### Canonical test vectors
+
+Task 01 changed transport ownership and address derivation only. Task 02
+confirmed every existing version 1 handshake, ACK, Control, and data-frame
+vector byte-for-byte unchanged. Address derivation is covered separately by a
+machine-readable fixture; it does not introduce a wire packet.
 
 | Binary vector | Purpose |
 |---|---|
@@ -543,19 +650,42 @@ is the common acceptance criterion for the Engine API implementations.
 | `control_pong.bin` | JSON pong echoing sequence 1 |
 | `control_error.bin` | JSON payload-size error with status `413` |
 
+### Canonical non-wire fixtures
+
+| Fixture | Purpose |
+|---|---|
+| `address_derivation.json` | Minimum and maximum input, changed name/token, macOS 103/104-byte boundaries, and invalid configuration cases |
+| `manifest.json` | Size, SHA-256, classification, purpose, and annotation hash for every canonical fixture |
+
+`tools/vector_tool.py` deterministically generates the non-wire fixtures and
+validates that every `.bin` is exactly equal to its companion `packet.hex`.
+The default check also pins protocol version `1`, verifies every manifest hash,
+and rejects orphaned or missing annotations. Run:
+
+```text
+python tools/vector_tool.py
+```
+
 ### Conformance checklist
 
 A conforming implementation must:
 
 - [ ] use Unix domain stream sockets on Linux/macOS and Named Pipes on Windows;
 - [ ] never use TCP and use the required transport at both endpoints;
-- [ ] derive a byte-identical address from name, token, and the OS temp API;
-- [ ] enforce `0600` on Unix or the required Named Pipe ACL on Windows;
-- [ ] test endpoint liveness by connecting and remove or release stale endpoints;
-- [ ] send and parse the 16-byte handshake with protocol version `1`;
+- [ ] validate name and token before transport use;
+- [ ] derive a byte-identical address from name, token, and the OS temp API,
+  including the two NUL bytes and lowercase SHA-256 prefix on Unix;
+- [ ] reject a macOS Unix pathname longer than 103 encoded bytes;
+- [ ] have Go open and own the listener and the engine connect as a dialer;
+- [ ] have Go enforce `0600` or the required Named Pipe ACL before accepting
+  traffic;
+- [ ] have Go test endpoint liveness and remove or release stale endpoints;
+- [ ] have Go send the 16-byte handshake after accepting an engine candidate;
+- [ ] parse the handshake with protocol version `1`;
 - [ ] negotiate one encoding and reject an empty intersection with `415`;
 - [ ] negotiate capabilities by intersection and return them in the 4-byte ACK;
-- [ ] accept up to the configured number of isolated sessions;
+- [ ] establish exactly one engine session at a time;
+- [ ] reject an invalid candidate without consuming the session slot;
 - [ ] send and validate session assignment immediately after the ACK;
 - [ ] reset negotiated state, buffers, and identifiers on reconnection;
 - [ ] keep channels, fragments, correlations, and heartbeat isolated per session;

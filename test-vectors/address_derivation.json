@@ -1,0 +1,175 @@
+{
+  "description": "Canonical cross-SDK endpoint address derivation vectors.",
+  "classification": "new",
+  "normative_source": "PROTOCOL.md section 2.1",
+  "algorithm": {
+    "digest_input": "UTF-8(yuumi) || 0x00 || UTF-8(endpoint_name) || 0x00 || UTF-8(token)",
+    "digest": "first 32 lowercase hexadecimal characters of SHA-256",
+    "unix_filename": "yuumi-<digest>.sock",
+    "windows_address": "\\\\.\\pipe\\yuumi-<endpoint_name>-<token>",
+    "macos_max_path_bytes_excluding_nul": 103
+  },
+  "cases": [
+    {
+      "id": "minimum_input",
+      "input": {
+        "endpoint_name": "a",
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "os_temp_dir": "/tmp"
+      },
+      "expected": {
+        "digest": "c3da2f7decb02b7a24e054711453a85c",
+        "windows_address": "\\\\.\\pipe\\yuumi-a-000102030405060708090a0b0c0d0e0f",
+        "unix_filename": "yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address": "/tmp/yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address_utf8_bytes": 48,
+        "macos_outcome": "accept"
+      }
+    },
+    {
+      "id": "maximum_input",
+      "input": {
+        "endpoint_name": "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+        "token": "f0e0d0c0b0a090807060504030201000",
+        "os_temp_dir": "/tmp"
+      },
+      "expected": {
+        "digest": "a9ce40da7198349aab024f107b698ef4",
+        "windows_address": "\\\\.\\pipe\\yuumi-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345-f0e0d0c0b0a090807060504030201000",
+        "unix_filename": "yuumi-a9ce40da7198349aab024f107b698ef4.sock",
+        "unix_address": "/tmp/yuumi-a9ce40da7198349aab024f107b698ef4.sock",
+        "unix_address_utf8_bytes": 48,
+        "macos_outcome": "accept"
+      }
+    },
+    {
+      "id": "different_token",
+      "input": {
+        "endpoint_name": "a",
+        "token": "100102030405060708090a0b0c0d0e0f",
+        "os_temp_dir": "/tmp"
+      },
+      "expected": {
+        "digest": "8710f11234486007b59a4333c6f01736",
+        "windows_address": "\\\\.\\pipe\\yuumi-a-100102030405060708090a0b0c0d0e0f",
+        "unix_filename": "yuumi-8710f11234486007b59a4333c6f01736.sock",
+        "unix_address": "/tmp/yuumi-8710f11234486007b59a4333c6f01736.sock",
+        "unix_address_utf8_bytes": 48,
+        "macos_outcome": "accept"
+      }
+    },
+    {
+      "id": "different_name",
+      "input": {
+        "endpoint_name": "b",
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "os_temp_dir": "/tmp"
+      },
+      "expected": {
+        "digest": "4c724cfb8212cb82d0857d699cdc7647",
+        "windows_address": "\\\\.\\pipe\\yuumi-b-000102030405060708090a0b0c0d0e0f",
+        "unix_filename": "yuumi-4c724cfb8212cb82d0857d699cdc7647.sock",
+        "unix_address": "/tmp/yuumi-4c724cfb8212cb82d0857d699cdc7647.sock",
+        "unix_address_utf8_bytes": 48,
+        "macos_outcome": "accept"
+      }
+    },
+    {
+      "id": "macos_long_temp_dir",
+      "input": {
+        "endpoint_name": "a",
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "os_temp_dir": "/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T"
+      },
+      "expected": {
+        "digest": "c3da2f7decb02b7a24e054711453a85c",
+        "windows_address": "\\\\.\\pipe\\yuumi-a-000102030405060708090a0b0c0d0e0f",
+        "unix_filename": "yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address": "/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T/yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address_utf8_bytes": 103,
+        "macos_outcome": "accept"
+      }
+    },
+    {
+      "id": "macos_path_over_limit",
+      "input": {
+        "endpoint_name": "a",
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "os_temp_dir": "/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T"
+      },
+      "expected": {
+        "digest": "c3da2f7decb02b7a24e054711453a85c",
+        "windows_address": "\\\\.\\pipe\\yuumi-a-000102030405060708090a0b0c0d0e0f",
+        "unix_filename": "yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address": "/private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T/yuumi-c3da2f7decb02b7a24e054711453a85c.sock",
+        "unix_address_utf8_bytes": 104,
+        "macos_outcome": "configuration_error_before_transport"
+      }
+    }
+  ],
+  "invalid_cases": [
+    {
+      "id": "empty_name",
+      "input": {
+        "endpoint_name": "",
+        "token": "00000000000000000000000000000000"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid endpoint_name"
+    },
+    {
+      "id": "name_too_long",
+      "input": {
+        "endpoint_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "token": "00000000000000000000000000000000"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid endpoint_name"
+    },
+    {
+      "id": "invalid_name_prefix",
+      "input": {
+        "endpoint_name": "_a",
+        "token": "00000000000000000000000000000000"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid endpoint_name"
+    },
+    {
+      "id": "invalid_name_character",
+      "input": {
+        "endpoint_name": "a.b",
+        "token": "00000000000000000000000000000000"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid endpoint_name"
+    },
+    {
+      "id": "token_too_short",
+      "input": {
+        "endpoint_name": "a",
+        "token": "0000000000000000000000000000000"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid token"
+    },
+    {
+      "id": "uppercase_token",
+      "input": {
+        "endpoint_name": "a",
+        "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid token"
+    },
+    {
+      "id": "non_hex_token",
+      "input": {
+        "endpoint_name": "a",
+        "token": "gggggggggggggggggggggggggggggggg"
+      },
+      "expected": "configuration_error_before_transport",
+      "reason": "invalid token"
+    }
+  ]
+}

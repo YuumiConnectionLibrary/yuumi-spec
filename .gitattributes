@@ -1,0 +1,4 @@
+test-vectors/*.bin binary
+test-vectors/*.json text eol=lf
+tools/*.py text eol=lf
+.github/workflows/*.yml text eol=lf

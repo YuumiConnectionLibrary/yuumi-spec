@@ -14,18 +14,23 @@ Status: **alpha**. Current protocol version: **`1`**.
 ## Architecture
 
 ```
-┌──────────────────────────┐   Local stream transport   ┌────────────────────────────┐
-│   Go frontend (TUI/CLI)  │ ◄────────────────────────► │   Logic engine             │
-│   yuumi (client SDK)     │        Yuumi protocol      │   C++ / Python / Rust / TS │
-└──────────────────────────┘                            └────────────────────────────┘
+┌────────────────────────────┐   Local stream transport   ┌────────────────────────────┐
+│ Go frontend (TUI/CLI)      │ ◄────────────────────────► │ Logic engine               │
+│ logical client + listener  │        Yuumi protocol      │ C++ / Python / Rust / TS   │
+└────────────────────────────┘                            │ engine + dialer            │
+                                                        └────────────────────────────┘
 ```
 
 The protocol is **asymmetric by design**:
 
-- The **Go SDK** (`yuumi`) is the only client and provides the UI-side API.
+- The **Go SDK** (`yuumi`) is the only logical client, owns the listener, and
+  provides the UI-side API.
 - The **engine SDKs** (`yuumi-cpp`, `yuumi-py`, `yuumi-rs`, and `yuumi-ts`)
-  open the endpoint, accept sessions, validate handshakes, and host application
-  logic.
+  dial the Go endpoint, validate the received handshake, send ACK and session
+  assignment, and host application logic.
+
+Transport ownership does not define process ownership. Yuumi does not spawn,
+discover, restart, supervise, package, or capture output from an engine.
 
 ## The two contracts
 
@@ -36,37 +41,41 @@ different contracts:
 - The **[Engine API](./ENGINE_API.md)** belongs to C++, Python, Rust, and
   TypeScript.
 
-The Engine API is a language-neutral behavioural contract. It defines endpoint
-lifecycle, session isolation, engine-side handshake negotiation, security,
-events, and outbound sends without forcing identical method spellings across
-languages.
+The Engine API is a language-neutral behavioural contract. It defines address
+derivation, dialling, received-handshake negotiation, session isolation,
+events, and outbound sends without forcing identical method spellings.
 
 The Client API has a single implementation and therefore prescribes concrete Go
-signatures. It defines address derivation and dialling, client-side negotiation,
-the three non-overlapping inbound paths, correlated requests, and reconnection
-semantics. It never listens and never owns an endpoint.
+signatures. It defines endpoint creation and protection, candidate admission,
+client-side negotiation, the three non-overlapping inbound paths, correlated
+requests, and replacement-session semantics.
 
 ---
 
 ## Connection lifecycle
 
 ```
-Go client                                  Engine
+Go logical client + listener               Engine + dialer
    │                                         │
+   │ open and protect endpoint               │
+   │◄──────────── connect ───────────────────│
+   │ accept candidate                        │
    │── Handshake (16 bytes, Big-Endian) ────►│ validate and negotiate
-   │◄── ACK (4 bytes) ────────────────────── │
-   │◄── Control: session ─────────────────── │
+   │◄── ACK (4 bytes) ───────────────────────│
+   │◄── Control: session ────────────────────│
    │                                         │
-   │◄════ Per-session frames ══════════════► │
-   │                                         │
-   │── close ──────────────────────────────► │
+   │◄════ Per-session frames ═══════════════►│
 ```
+
+Exactly one engine session is established at a time. A rejected candidate is
+closed without consuming the slot, so Go continues accepting. Reconnection is
+a new session with a new assignment and replaced opaque local epoch.
 
 ---
 
 ## Wire format
 
-### Handshake — client → server, 16 bytes (all fields Big-Endian)
+### Handshake — Go logical client → engine, 16 bytes (all fields Big-Endian)
 
 | Bytes | Field | Value |
 |---|---|---|
@@ -76,7 +85,7 @@ Go client                                  Engine
 | 12 | Encoding capabilities | `0x01`=JSON, `0x02`=MsgPack, `0x03`=both |
 | 13–15 | Capability mask | 24-bit client capability advertisement |
 
-### ACK — server → client, 4 bytes
+### ACK — engine → Go logical client, 4 bytes
 
 | Bytes | Field |
 |---|---|
@@ -97,8 +106,8 @@ Go client                                  Engine
 | ID | Name | Direction | Purpose |
 |---|---|---|---|
 | `0x00` | Control | Bidirectional | Heartbeat (`{"type":"heartbeat","ts":<unix>}`), lifecycle |
-| `0x01` | Command | Client → Server | Commands, requests |
-| `0x02` | Log | Server → Client | Log output, diagnostics |
+| `0x01` | Command | Go → engine | Commands, requests |
+| `0x02` | Log | Engine → Go | Log output, diagnostics |
 | `0x03` | Data | Bidirectional | Application payload |
 
 Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
@@ -109,11 +118,11 @@ Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
 
 | Language | Repo | Role | Install |
 |---|---|---|---|
-| **Go** | [yuumi](https://github.com/YuumiConnectionLibrary/yuumi) | Client / TUI side | `go get github.com/YuumiConnectionLibrary/yuumi` |
-| **C++23** | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | Engine | CMake + vcpkg |
-| **Python 3.11+** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Engine | `pip install yuumi-py` |
-| **Rust** | [yuumi-rs](https://github.com/YuumiConnectionLibrary/yuumi-rs) | Engine | `cargo add yuumi` *(planned)* |
-| **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine | `npm install yuumi` *(planned)* |
+| **Go** | [yuumi](https://github.com/YuumiConnectionLibrary/yuumi) | Logical client + listener | `go get github.com/YuumiConnectionLibrary/yuumi` |
+| **C++23** | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | Engine + dialer | CMake + vcpkg |
+| **Python 3.11+** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Engine + dialer | `pip install yuumi-py` |
+| **Rust** | [yuumi-rs](https://github.com/YuumiConnectionLibrary/yuumi-rs) | Engine + dialer | `cargo add yuumi` *(planned)* |
+| **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine + dialer | `npm install yuumi` *(planned)* |
 
 All SDKs implement their role-specific contract and must pass the applicable
 conformance tests. The four engine SDKs share the numbered
@@ -124,10 +133,11 @@ proven with the canonical vectors in [`test-vectors/`](./test-vectors/).
 
 ## Technical choices
 
-**Platform-native local streams** — Unix domain sockets on Linux/macOS and Named
-Pipes on Windows. TCP and transport fallback are forbidden. The deterministic
-address includes a 128-bit token and uses the platform temporary-directory API
-where applicable.
+**Platform-native local streams** — Go listens on a Unix domain socket on
+Linux/macOS and a byte-stream Named Pipe on Windows; every engine dials it. TCP
+and transport fallback are forbidden. Windows carries the token in the pipe
+name. Unix uses `yuumi-<digest>.sock`, where `digest` is the first 32 lowercase
+hex characters of SHA-256 over `yuumi\0<endpoint_name>\0<token>` UTF-8 bytes.
 
 **Binary handshake (16 bytes)** — the protocol version is a compatibility gate,
 the PID can be checked optionally, and a 24-bit mask negotiates additive
@@ -142,9 +152,10 @@ frame and reassembled-message overflow use `ERR_PAYLOAD_TOO_LARGE (413)`.
 **Channel multiplexing** — four logical channels share each session's local
 stream, separating Control traffic from application data.
 
-**Isolated sessions** — every accepted connection owns its negotiated encoding,
-capabilities, heartbeat state, fragmentation buffers, correlation state,
-`session_id`, and local `epoch`.
+**One isolated session** — one established engine at a time owns negotiated
+encoding, capabilities, heartbeat state, fragmentation buffers, correlation
+state, `session_id`, and an opaque local `epoch`. Rejected candidates do not
+consume the slot.
 
 **Capabilities, not version bumps** — additive features are enabled only by the
 intersection of endpoint capability masks. Library semver remains independent.
@@ -158,9 +169,19 @@ Every `.bin` fixture in [`test-vectors/`](./test-vectors/) has a same-basename
 The complete canonical vector inventory is maintained in
 [`PROTOCOL.md`](./PROTOCOL.md#canonical-test-vectors).
 
-Engine acceptance is defined by
-[`ENGINE_CONFORMANCE.md`](./ENGINE_CONFORMANCE.md), which distinguishes
-baseline tests from tests that run only after capability negotiation.
+Address derivation uses the machine-readable
+[`address_derivation.json`](./test-vectors/address_derivation.json). The
+generated [`manifest.json`](./test-vectors/manifest.json) classifies every wire
+fixture and pins binary and annotation SHA-256 values. Validate everything with:
+
+```text
+python tools/vector_tool.py
+```
+
+Go acceptance is defined by
+[`CLIENT_CONFORMANCE.md`](./CLIENT_CONFORMANCE.md). Engine acceptance is
+defined by [`ENGINE_CONFORMANCE.md`](./ENGINE_CONFORMANCE.md), which
+distinguishes baseline tests from capability-gated cases.
 
 ---
 
