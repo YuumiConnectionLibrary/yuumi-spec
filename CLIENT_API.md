@@ -1,256 +1,375 @@
-# Yuumi Client API Contract
+# Yuumi Go Client API Contract
 
 Status: **alpha**
 
 Wire protocol: **version `1`**
 
-This document is the authoritative contract for the Yuumi client role. Only the
-Go SDK implements it. The keywords **MUST**, **MUST NOT**, **SHOULD**,
-**SHOULD NOT**, and **MAY** are normative.
+This document is the normative contract for the Go Client API. Go is the only
+logical client and the only listener. The keywords **MUST**, **MUST NOT**,
+**SHOULD**, **SHOULD NOT**, and **MAY** are normative.
 
-The Client API is intentionally different from the [Engine API](./ENGINE_API.md).
-Go is the logical client and also owns the local transport listener. It accepts
-one engine dialer, sends the unchanged client handshake, and exposes the
-established session to a terminal user interface. Listener ownership does not
-make Go an engine or transfer engine-process lifecycle into Yuumi.
-
-This contract has exactly one implementation and therefore prescribes concrete
-Go signatures. A second spelling of the same behaviour would be divergence,
-not an idiomatic variation.
+The Client API owns the protected local endpoint and IPC session. It does not
+own the engine process. Listener ownership does not change handshake direction:
+Go sends the handshake and an engine dialer returns ACK and session assignment.
 
 ---
 
-## 1. Client configuration
+## 1. Responsibilities and exclusions
 
-```go
-type ListenOptions struct {
-    Heartbeat HeartbeatOptions
-    RequestTimeout time.Duration
-    MessageBuffer int
-    ExpectedEnginePID *uint32
-}
-```
-
-| Option | Contract |
-|---|---|
-| `Heartbeat` | Optional. It **MUST** carry `Disabled bool`, never `Enabled bool`, so the zero value keeps heartbeat active. |
-| `RequestTimeout` | Optional, default 30 s. It **MUST** be positive when set and applies only when the request context carries no deadline. |
-| `MessageBuffer` | Optional, provisional default 64. It **MUST** be greater than zero when set. |
-| `ExpectedEnginePID` | Optional additional peer check. `nil` disables it; a pointer to zero means PID zero and is not equivalent to absence. It is not primary authentication. |
-
-Every option **MUST** have a usable zero value. Invalid configuration **MUST**
-fail before Go probes, creates, removes, or changes an endpoint.
-
-There is no session-capacity option. A listener permits exactly one established
-engine session at a time. Reconnect and retry timing are application policy;
-they are not listener options.
+- **CLI-ROLE-001** — Go validates configuration, derives and protects the
+  endpoint, accepts candidates, sends the handshake, validates ACK and session
+  assignment, and owns framing, correlation, fragmentation, heartbeat, epoch,
+  and cleanup on its side.
+- **CLI-ROLE-002** — A transport candidate is not a session until handshake,
+  ACK, and session assignment all succeed.
+- **CLI-ROLE-003** — The client accepts a new candidate after rejection or a
+  completed session disconnect without recreating the Go client object.
+- **CLI-ROLE-004** — The API never starts, stops, discovers, supervises, or
+  restarts an engine; chooses an executable; or captures stdout/stderr.
+- **CLI-ROLE-005** — `Runner`, environment handoff, retry policy, process
+  policy, and application schemas are optional application helpers outside this
+  contract and outside client conformance.
 
 ---
 
-## 2. Required Client API surface
+## 2. Concrete Go surface
+
+The one Go implementation uses these names and semantic shapes:
 
 ```go
 type Token string
 
-func GenerateToken() (Token, error)
+type Config struct {
+	EndpointName string
+	Token Token
+	Listen ListenOptions
+}
 
-func Listen(name string, token Token, opts ...ListenOptions) (*Listener, error)
-func (l *Listener) Accept(ctx context.Context) (*Client, error)
-func (l *Listener) OnError(fn func(error))
-func (l *Listener) Close() error
+type ListenOptions struct {
+	Heartbeat HeartbeatOptions
+	RequestTimeout time.Duration
+	MessageBuffer int
+	CallbackBuffer int
+	ExpectedEnginePID *uint32
+	SupportedEncodings []Encoding
+	DisabledCapabilities Capabilities
+}
 
-func (c *Client) Request(ctx context.Context, data any, ch Channel) (any, Channel, error)
-func (c *Client) Send(data any, ch Channel) error
-func (c *Client) Messages() <-chan Message
+type HeartbeatOptions struct {
+	Interval time.Duration
+	MissThreshold int
+	Disabled bool
+}
 
-func (c *Client) OnError(fn func(error))
-func (c *Client) OnHeartbeat(fn func(ts int64))
-
-func (c *Client) SessionID() string
-func (c *Client) Epoch() uint64
-func (c *Client) NegotiatedCapabilities() Capabilities
-func (c *Client) Close() error
-
-func Decode(data any, v any) error
+type SessionView struct {
+	SessionID string
+	Epoch uint64
+	Encoding Encoding
+	Capabilities Capabilities
+}
 
 type Message struct {
-    Data any
-    Channel Channel
+	Data any
+	Channel Channel
+	Epoch uint64
 }
+
+type HeartbeatEvent struct {
+	Session SessionView
+	Timestamp int64
+}
+
+type DisconnectEvent struct {
+	Session SessionView
+	Reason DisconnectReason
+	Err error
+}
+
+func GenerateToken() (Token, error)
+func NewClient(cfg Config) (*Client, error)
+func (c *Client) Open() error
+func (c *Client) WaitConnected(ctx context.Context) (SessionView, error)
+func (c *Client) Send(data any, ch Channel) error
+func (c *Client) Request(ctx context.Context, data any, ch Channel) (any, Channel, error)
+func (c *Client) Messages() <-chan Message
+func (c *Client) Session() (SessionView, bool)
+func (c *Client) OnConnected(fn func(SessionView))
+func (c *Client) OnDisconnected(fn func(DisconnectEvent))
+func (c *Client) OnHeartbeat(fn func(HeartbeatEvent))
+func (c *Client) OnError(fn func(error))
+func (c *Client) Close() error
+func Decode(data any, dst any) error
 ```
 
-`Listener` owns the endpoint and admission. Each `Client` value represents one
-established Go-engine session and never changes its underlying connection.
-`Listener.Close` and `Client.Close` therefore have different scope.
+- **CLI-API-001** — `GenerateToken` obtains 128 cryptographically secure bits
+  and returns exactly 32 lowercase hexadecimal characters. No default or fixed
+  token exists.
+- **CLI-API-002** — `NewClient` validates and copies configuration but performs
+  no probe, bind, listen, unlink, accept, dial, or goroutine start.
+- **CLI-API-003** — `Open` creates and protects the endpoint, starts admission,
+  and returns when listening is ready. It never waits for an engine.
+- **CLI-API-004** — `WaitConnected` returns the current session if connected;
+  while listening it waits for the next established session or context/client
+  closure. Multiple waiters are allowed and observe the same next session.
+- **CLI-API-005** — `Send` and `Request` accept only client-output `Command` and
+  `Data`. Control frames cannot be forged through public API.
+- **CLI-API-006** — `Messages` is the only stream for complete unsolicited
+  application messages. Correlated replies go only to `Request`; Control goes
+  only to SDK state/callbacks.
+- **CLI-API-007** — `Session` returns an immutable snapshot and `false` outside
+  `connected`. All exported methods are safe for concurrent goroutine use.
+- **CLI-API-008** — `Close` is idempotent and permanently closes the object.
+  Reopening a closed client is forbidden and fails with `closed`.
+- **CLI-API-009** — `Decode` converts a decoded JSON or MessagePack value into
+  `dst` without imposing an application envelope. Nil or invalid destinations
+  fail explicitly.
 
-There are exactly three ways to observe inbound session traffic, and they
-**MUST NOT** overlap: `Request` for correlated replies, `Messages` for
-unsolicited traffic, and callbacks for SDK-owned Control or error events. An
-SDK **MUST NOT** expose a blocking single-message read and **MUST NOT** require
-an explicit call to start session dispatching.
+The required fields have no meaningful zero value and are validated. Every
+optional field does:
 
-All exported methods **MUST** be safe for concurrent use by multiple goroutines.
+| Option | Zero-value/default behaviour |
+|---|---|
+| **CLI-CFG-001** `Heartbeat.Disabled` | `false`; heartbeat enabled. |
+| **CLI-CFG-002** `Heartbeat.Interval` | 30 s; a negative value is invalid. |
+| **CLI-CFG-003** `Heartbeat.MissThreshold` | 3; a negative value is invalid. |
+| **CLI-CFG-004** `RequestTimeout` | 30 s; a negative value is invalid. A request context deadline takes precedence. |
+| **CLI-CFG-005** `MessageBuffer` | **64**; a negative value is invalid. |
+| **CLI-CFG-006** `CallbackBuffer` | **64**; a negative value is invalid. |
+| **CLI-CFG-007** `ExpectedEnginePID` | `nil` disables the additional check; pointer-to-zero is a real value. |
+| **CLI-CFG-008** `SupportedEncodings` | `nil` means the set MessagePack and JSON; slice order is not transmitted. Non-nil empty, duplicates, and unknown values are invalid. |
+| **CLI-CFG-009** `DisabledCapabilities` | Zero disables nothing. Only implemented capability bits may be named; version 1 advertises `CAP_CORRELATION` unless disabled. |
 
----
-
-## 3. Token and canonical address
-
-The token is the access capability described in `PROTOCOL.md`, not an
-identifier. It **MUST** be a distinct named type so transposing it with the
-endpoint name is a compile-time error.
-
-`GenerateToken` **MUST** draw 128 bits from a cryptographically secure source
-and return exactly 32 lowercase hexadecimal characters. The SDK **MUST NOT**
-provide a default, placeholder, or fixed token.
-
-`Listen` **MUST** validate name and token and derive the address byte for byte
-as `PROTOCOL.md` prescribes. On Unix this includes the NUL-separated SHA-256
-input and encoded-path byte bound. On Windows it includes the clear token in
-the canonical Named Pipe name. Go **MUST NOT** accept an arbitrary full path in
-place of the two validated inputs.
-
----
-
-## 4. Listener lifecycle and endpoint ownership
-
-`Listen` **MUST**, in order:
-
-1. validate all configuration, `endpoint_name`, and token;
-2. derive the canonical platform address;
-3. probe an existing endpoint by attempting a connection;
-4. refuse to replace a live listener;
-5. remove a Unix socket node only after connection refusal proves it stale;
-6. create a Unix domain stream socket on Linux/macOS or a byte-stream Named
-   Pipe on Windows;
-7. apply mode `0600`, or the intended-user ACL and remote-client rejection,
-   before accepting traffic; and
-8. return once the protected endpoint is ready.
-
-Endpoint presence alone is never proof of life. A busy Named Pipe is not stale.
-Windows has no filesystem pipe node to unlink.
-
-Opening an already-open listener at the same address **MUST** fail without
-disturbing the live owner. `Listener.Close` **MUST** stop admission, close any
-active candidate and established session, wait until their work cannot emit a
-new callback, release all transport resources, and unlink or release the owned
-endpoint. Repeated close **MUST** be safe.
+For integer/duration options, zero selects the documented default; an explicit
+negative value is invalid. Configuration errors occur before transport access.
+There is no reconnect, session-capacity, executable, or arbitrary-address
+option.
 
 ---
 
-## 5. Accept and handshake
+## 3. Normative state machine
 
-`Accept` waits for one valid engine candidate while no session is established.
-Only one `Accept` call may be active. Calling it while another `Accept` is
-active or while a session is established **MUST** fail explicitly.
+```text
+          Open succeeds
+ +-----+ ----------------> +-----------+
+ | new |                   | listening | <---------+
+ +-----+ <---------------- +-----------+           |
+          Open fails           |                   |
+                               | valid candidate   | session loss
+                               v                   |
+                           +-----------+           |
+                           | connected | ----------+
+                           +-----------+
+                                |
+             Close from any live state
+                                v
+                           +---------+  teardown  +--------+
+                           | closing | ---------> | closed |
+                           +---------+            +--------+
+```
 
-For each candidate, Go **MUST**:
+| State | Invariant |
+|---|---|
+| **CLI-STATE-001** `new` | Configured object, no endpoint or background work. |
+| **CLI-STATE-002** `listening` | Protected endpoint and accept loop are active; no established session. |
+| **CLI-STATE-003** `connected` | Exactly one established engine session is active. Additional candidates are rejected without affecting it. |
+| **CLI-STATE-004** `closing` | New operations fail; candidate, session, listener, waits, queues, and goroutines are being stopped. |
+| **CLI-STATE-005** `closed` | All owned resources are released. `Open` is permanently forbidden. |
 
-1. accept the transport connection;
-2. perform mandatory peer checks and the optional `ExpectedEnginePID` check
-   where trustworthy credentials are available;
-3. send the unchanged 16-byte version 1 client handshake;
-4. read and validate the unchanged 4-byte engine ACK;
-5. receive and validate the engine session assignment; and
-6. create the `Client`, replace the listener's local epoch, and start dispatch.
-
-A candidate is not a session until all six steps succeed. A rejected candidate
-**MUST** be closed and `Accept` **MUST** continue waiting; it does not consume
-the listener's only session slot. `Accept` returns an error only when its
-context ends, the listener closes, or the listener can no longer accept safely.
-Candidate-specific failures **MUST** remain observable through typed listener
-diagnostics even though admission continues.
-
-The handshake is still Go to engine. Protocol version remains `1`; no handshake,
-ACK, session-assignment, or frame byte changes because transport ownership was
-inverted.
-
----
-
-## 6. Session lifecycle and epochs
-
-An accepted `Client` owns immutable selected encoding, negotiated capabilities,
-`session_id`, and local `epoch`. Closing or losing the session destroys its
-heartbeat, fragmentation, and pending-correlation state and releases the
-listener slot.
-
-The application may call `Accept` again after complete teardown. The next
-success creates a new `Client`, performs a full handshake, receives a new
-engine-assigned `session_id`, and replaces the local epoch. Epoch values are
-opaque SDK state and are never transmitted. An operation created under an old
-epoch **MUST NOT** send, complete, time out, or invoke session work against the
-replacement.
-
-Pending requests fail with a distinct session-lost error and are never retried
-automatically. Session retry, engine restart, and application resynchronization
-remain application policy.
+- **CLI-STATE-006** — `Open` is valid only in `new`. A failed open restores
+  `new` after cleaning partial resources, so the application may retry.
+- **CLI-STATE-007** — An invalid candidate is closed and returns the client to
+  or leaves it in `listening`; it never consumes the only session slot.
+- **CLI-STATE-008** — Session loss returns to `listening` without starting,
+  stopping, or restarting any process.
+- **CLI-STATE-009** — Every established session receives the engine's new
+  `session_id` and a client-local epoch strictly greater than the prior
+  successful epoch. Epoch zero means no session and is never transmitted.
+- **CLI-STATE-010** — Sends, responders, request timers, fragments,
+  correlations, queued events, and callbacks capture an epoch. Stale work fails
+  or is discarded and cannot reach, mutate, emit against, or close a later
+  session.
 
 ---
 
-## 7. Payloads, messages, and requests
+## 4. Endpoint security and ownership
 
-Inbound payloads **MUST** use `any`; JSON and MessagePack both admit objects,
-arrays, and scalars. `Decode` converts a decoded payload into a caller-supplied
-typed value identically for either negotiated encoding.
-
-`Messages` carries only complete unsolicited non-Control messages. Correlated
-responses belong to their `Request`; Control traffic belongs to the SDK. The
-channel **MUST** be buffered to `MessageBuffer`. A full buffer **MUST NOT**
-block the read loop; the SDK drops that message and reports a distinct typed
-error so loss is observable. `Client.Close` closes the channel after dispatch
-has stopped.
-
-`Request` requires negotiated `CAP_CORRELATION`, allocates an identifier within
-the session, and waits for the matching response. It fails before writing when
-correlation was not negotiated. The context deadline wins over
-`RequestTimeout`; timeout releases the identifier. A late unmatched response
-is discarded and never becomes another request's response or unsolicited
-traffic. Concurrent requests **MUST** be supported.
-
-`Send` and `Request` accept only client-output application channels from the
-protocol channel table. Applications cannot forge Control traffic. Sequential
-accepted sends for one `Client` preserve order.
+- **CLI-ENDP-001** — `NewClient` validates the endpoint name and token and
+  derives the canonical address byte-for-byte as `PROTOCOL.md` specifies,
+  including OS temp lookup, filesystem encoding, and macOS pathname byte bound.
+- **CLI-ENDP-002** — `Open` probes an existing endpoint by connecting. A live
+  endpoint is never replaced. Presence alone does not prove liveness, and a
+  busy Named Pipe is not stale.
+- **CLI-ENDP-003** — On Unix, a socket node is unlinked before bind only after
+  connection refusal proves it stale. A listener-owned node is unlinked during
+  shutdown. No unrelated path is removed.
+- **CLI-ENDP-004** — Linux/macOS create a Unix domain stream socket with mode
+  `0600` before traffic. Windows creates a byte-stream Named Pipe through
+  `Microsoft/go-winio`, restricts ACL to the intended user, and rejects remote
+  clients before traffic.
+- **CLI-ENDP-005** — TCP, network fallback, hardcoded temp directories, token
+  case folding, arbitrary full paths, and token/address disclosure in routine
+  diagnostics are forbidden.
+- **CLI-ENDP-006** — `Close` releases the listener, active candidate, session,
+  Unix node or Windows handles, goroutines, timers, queues, and blocked waits.
 
 ---
 
-## 8. Callback and error rules
+## 5. Candidate admission and establishment
 
-`Listener.OnError` reports candidate failures while `Accept` continues and
-listener-level transport failures. `Client.OnError` reports typed protocol,
-transport, session, and dropped-message errors. `OnHeartbeat` reports inbound
-heartbeats, which never appear on `Messages`. An unregistered callback is
-ignored silently.
-
-Callbacks **MUST NOT** run while holding a lock needed by a public method. A
-slow callback **MUST NOT** block transport reads, writes, heartbeat, timeout, or
-endpoint admission. No session callback may begin after that `Client` has
-finished closing.
-
-Configuration, endpoint, candidate, and established-session failures remain
-distinguishable. No error may be replaced by an empty payload or success-shaped
-fallback.
-
----
-
-## 9. What the Client API does not cover
-
-The following remain outside this contract:
-
-- starting, stopping, supervising, discovering, or restarting an engine;
-- finding an executable or capturing its stdout/stderr;
-- deciding how the engine obtains endpoint name and token;
-- application schemas, command routing, retries, and domain semantics; and
-- packaging or distribution of application executables.
-
-The Go repository may ship `Runner` as an optional helper, but it is not part of
-this contract and is not required for conformance. Endpoint ownership is part
-of the Client API; engine-process ownership is not.
+- **CLI-ADMIT-001** — While `listening`, Go accepts and evaluates one candidate
+  at a time and sends the exact 16-byte client handshake only after mandatory
+  transport security/peer checks succeed.
+- **CLI-ADMIT-002** — Go validates the exact 4-byte ACK selection and capability
+  subset, then validates the immediately following session assignment before
+  entering `connected`.
+- **CLI-ADMIT-003** — Short/invalid ACK, unadvertised encoding/capability,
+  malformed assignment, peer-check failure, or candidate disconnect closes
+  only that candidate, emits a typed listener diagnostic, and admission
+  continues.
+- **CLI-ADMIT-004** — Candidate rejection emits neither connected nor
+  disconnected. The connected callback and `WaitConnected` release occur only
+  after dispatch is ready for the established session.
+- **CLI-ADMIT-005** — While `connected`, later candidates are refused or
+  accepted only to be immediately closed without handshake. They cannot change
+  session state, epoch, callbacks, or negotiated values.
+- **CLI-ADMIT-006** — A fatal accept-loop error is observable, closes owned
+  resources, and transitions through `closing` to `closed`; it is not presented
+  as an engine disconnect.
 
 ---
 
-## 10. Conformance boundary
+## 6. Session operations and cleanup
 
-An implementation conforms when it satisfies this contract and `PROTOCOL.md`,
-verified by the canonical vectors and the
-[`Client Conformance Suite`](./CLIENT_CONFORMANCE.md). Correct frame codecs do
-not compensate for unsafe endpoint ownership, reversed handshake direction,
-loss of the one-to-one slot after candidate rejection, or stale-epoch work.
+- **CLI-SESS-001** — `Send` writes an uncorrelated frame with the current
+  encoding. Completed success means the bytes were written; sequential calls
+  preserve order.
+- **CLI-SESS-002** — `Request` requires negotiated `CAP_CORRELATION`, allocates
+  a session-unique `uint32` ID, writes the correlated request, and waits only
+  for the matching response. Concurrent requests are supported.
+- **CLI-SESS-003** — Context deadline overrides the configured request timeout.
+  Timeout releases the ID. A late unmatched reply is discarded and never
+  reaches `Messages` or another request.
+- **CLI-SESS-004** — Disconnect fails all pending requests with
+  `session_closed` carrying the lost epoch. `Close` fails them with `closed`.
+  Requests are never retried automatically.
+- **CLI-SESS-005** — Already accepted application events for the old epoch are
+  delivered in order before its disconnected callback. Establishment of a new
+  session may proceed at transport level, but its connected application event
+  is ordered after the prior disconnected event.
+- **CLI-SESS-006** — Disconnect discards partial fragments, unmatched
+  correlations, unsent output, timers, and SDK-internal state. It does not
+  discard already accepted application events unless `Close` is in progress.
+- **CLI-SESS-007** — `Close` rejects new operations, unblocks `WaitConnected`
+  and requests, stops admission and session I/O, closes `Messages` after
+  dispatch stops, and prevents any later callback from starting.
+
+---
+
+## 7. Dispatch, callbacks, and backpressure
+
+Accept, transport I/O, parsing, writes, heartbeat, timeouts, and close do not
+share an application callback path.
+
+- **CLI-DISP-001** — Complete messages for one epoch are offered to `Messages`
+  in wire order. Session callbacks are started in event order and never overlap
+  each other.
+- **CLI-DISP-002** — `Messages` and the callback queue are both bounded by their
+  configured capacities, each defaulting to 64. IPC never waits indefinitely
+  for either queue.
+- **CLI-DISP-003** — If either queue is full, the client records a typed
+  `backpressure` error, stops accepting application work for that epoch, closes
+  the session, fails pending requests, and returns to `listening` after ordered
+  disconnection. It does not drop a message and continue successfully.
+- **CLI-DISP-004** — Terminal error/disconnected delivery has reserved internal
+  capacity outside `CallbackBuffer`, so backpressure remains observable.
+- **CLI-DISP-005** — Heartbeat, error, connected, and disconnected callbacks run
+  without locks needed by public methods. An absent callback is a no-op.
+- **CLI-DISP-006** — A callback panic is recovered at the SDK dispatch boundary,
+  reported as typed `application` error, and never converted to success. A
+  panic in `OnError` is reported once through Go's runtime panic reporting and
+  is not recursively dispatched.
+- **CLI-DISP-007** — `Close` invoked outside a callback waits for dispatch and
+  goroutines to end. When invoked by the currently running callback, it closes
+  transport and prevents new callbacks, but cannot wait for itself; resource
+  completion occurs as that callback returns.
+
+---
+
+## 8. Error model
+
+Errors are concrete Go types usable with `errors.Is`/`errors.As`. Each carries
+an English cause and the phase/epoch when applicable.
+
+| Kind | Produced when |
+|---|---|
+| **CLI-ERR-001** `configuration` | Required or optional configuration is invalid. |
+| **CLI-ERR-002** `address_derivation` | Temp lookup, hashing, filesystem encoding, or path-byte validation fails. |
+| **CLI-ERR-003** `endpoint_live` | Another live listener owns the canonical endpoint. |
+| **CLI-ERR-004** `security` | Mode, ACL, remote rejection, or peer credential validation fails. |
+| **CLI-ERR-005** `accept` | Listener admission fails terminally. |
+| **CLI-ERR-006** `handshake` | Candidate transport, ACK, or session assignment fails. |
+| **CLI-ERR-007** `protocol` | Established framing, channel, Control, correlation, or fragmentation is invalid. |
+| **CLI-ERR-008** `encoding` | ACK selects an invalid encoding or codec work fails. |
+| **CLI-ERR-009** `capability` | ACK exceeds the offer or an operation needs an unnegotiated capability. |
+| **CLI-ERR-010** `timeout` | Request, heartbeat, fragment, read, or write deadline expires. |
+| **CLI-ERR-011** `backpressure` | `Messages` or callback capacity is exhausted; terminal for that epoch. |
+| **CLI-ERR-012** `session_closed` | An operation targets no active session or one lost by disconnect. |
+| **CLI-ERR-013** `stale_epoch` | Old work attempts to act on a replacement session. |
+| **CLI-ERR-014** `closed` | The client is closing/closed or `Close` cancels work. |
+| **CLI-ERR-015** `application` | An application callback panics. |
+| **CLI-ERR-016** `transport` | Established read/write/close fails without a more specific kind. |
+| **CLI-ERR-017** `internal` | An invariant or runtime facility fails and no specific kind applies. |
+| **CLI-ERR-018** `state` | `Open` is called outside `new` or another operation is invalid for the current non-closed state. |
+
+Candidate diagnostics have no epoch and do not terminate `WaitConnected`.
+Established fatal errors carry their epoch, are reported once, and are not
+replaced by empty data or a normal result.
+
+---
+
+## 9. Current Go API disposition
+
+| Keep or adapt | Replace | Explicitly outside/remove from contract |
+|---|---|---|
+| `Token`, `GenerateToken`, `Send`, `Request`, `Messages`, `Decode`, protocol value types, typed errors | `Connect` -> `NewClient` + `Open`; `ConnectOptions` -> `Config`/`ListenOptions`; `OnReconnect` -> `OnConnected` and `OnDisconnected`; drop-on-full -> terminal backpressure; reconnecting `Client` internals -> listener admission state machine | `ReconnectPolicy`, automatic reconnect/backoff, `Runner`, executable/log capture, engine process control, public non-Go clients |
+
+`Runner` may remain a separately documented application convenience in the Go
+repository, but importing or using it is never required by this contract or its
+conformance suite.
+
+---
+
+## 10. Conformance trace
+
+The [`Client Conformance Suite`](./CLIENT_CONFORMANCE.md) supplies the wire,
+endpoint, platform, and Task 03b behavioural cases.
+
+| Requirement IDs | Conformance cases |
+|---|---|
+| `CLI-ROLE-*` | CC-004 through CC-007, CC-021, **CC-022** |
+| `CLI-API-*`, `CLI-CFG-*` | CC-001, CC-007 through CC-009, CC-016 through CC-018, **CC-022** through **CC-024** |
+| `CLI-STATE-*` | CC-007, CC-009 through CC-012, CC-019, CC-020, **CC-025** |
+| `CLI-ENDP-*` | CC-001 through CC-007, **CC-026** |
+| `CLI-ADMIT-*` | CC-008 through CC-013, **CC-027** |
+| `CLI-SESS-*` | CC-014 through CC-020, **CC-028**, **CC-029** |
+| `CLI-DISP-*` | CC-016 through CC-018, **CC-030** through **CC-033** |
+| `CLI-ERR-*` | CC-001, CC-005 through CC-013, CC-015 through CC-020, **CC-034** |
+
+Task 03b cases:
+
+- **CC-022** `NewClient` has zero transport and goroutine side effects;
+- **CC-023** every optional field has the documented zero/default behaviour;
+- **CC-024** token generation and `Decode` boundaries are typed;
+- **CC-025** exact states, failed-open retry, permanent close, and monotonic epoch;
+- **CC-026** deterministic close on Windows, Linux, and macOS;
+- **CC-027** connected-state candidates are rejected without session impact;
+- **CC-028** pending request and queued-event behaviour on disconnect/close;
+- **CC-029** stale send/responder/timeout/fragment/correlation isolation;
+- **CC-030** both queue boundaries use default 64 and configured capacity;
+- **CC-031** overflow terminates with typed backpressure and no silent drop;
+- **CC-032** callback ordering, lock freedom, panic observability, and close;
+- **CC-033** accept/I/O/heartbeat progress while handlers are blocked;
+- **CC-034** every required error kind is constructible and distinguishable.
+
+The contract is implementable with ordinary Go goroutines and
+`Microsoft/go-winio`; it requires no engine lifecycle helper.

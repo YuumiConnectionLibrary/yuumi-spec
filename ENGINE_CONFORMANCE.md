@@ -29,7 +29,8 @@ The harness provides a private Go-role listener and can:
 - inspect whether the engine created, removed, or changed endpoint state;
 - inject dial, read, ACK-write, session-write, established-read/write, and
   close failures through test-only seams;
-- record all four public engine events and their start order;
+- record connected, message, heartbeat, error, and disconnected events and
+  their start order;
 - observe attempted reads and allocations at decoder boundaries; and
 - control positive heartbeat and fragment deadlines without unbounded sleeps.
 
@@ -590,14 +591,14 @@ and 104-byte rejection examples and confirms every current `.bin` unchanged.
 
 62. **EC-062 — Deferred transport failure becomes one error event**
     - Class: **Baseline**.
-    - Precondition: Configure the SDK so an accepted send is queued, then inject
-      a transport write failure before completion.
-    - Action: Submit the send and observe its result and events.
-    - Expected: If initial acceptance succeeds, the later failure is surfaced
-      exactly once through an error event containing category, applicable
-      status, write phase, cause, and the current session epoch. It is never
-      converted to a successful message or normal disconnect reason and does
-      not mutate the Go listener or a later replacement session.
+    - Precondition: Configure an implementation whose send operation internally
+      queues a write, then inject transport failure before write completion.
+    - Action: Submit and await the send result and observe events.
+    - Expected: The send does not complete successfully before the write. It
+      fails, and the terminal transport cause is surfaced exactly once with
+      category, status where applicable, write phase, cause, and current epoch.
+      It is not converted to success or a normal disconnect and cannot mutate
+      the Go listener or a replacement session.
     - Canonical vectors: none.
 
 63. **EC-063 — Error events preserve phase, handle, and terminal cause**
@@ -620,8 +621,8 @@ and 104-byte rejection examples and confirms every current `.bin` unchanged.
       a normal consumer.
     - Action: Run the SDK's API-surface conformance check and documentation
       assertions.
-    - Expected: The required engine operations and connected, message, error,
-      and disconnected events are publicly consumable through idiomatic
+    - Expected: The required engine operations and connected, message,
+      heartbeat, error, and disconnected events are publicly consumable through idiomatic
       constructs. The event execution context and concurrent-call ordering are
       documented. No public listener/server or client API, mandatory process
       launcher, `Runner` equivalent, restart policy, or application semantics
@@ -630,21 +631,72 @@ and 104-byte rejection examples and confirms every current `.bin` unchanged.
 
 ---
 
-## 10. Normative coverage
+## 10. Task 03 state, dispatch, and runtime cases
+
+65. **EC-065 — Environment adapter is configuration-only**
+    - Reading valid `YUUMI_ENDPOINT_NAME` and `YUUMI_TOKEN` returns config;
+      missing/invalid values are typed configuration errors. No dial, listener,
+      process, retry, discovery, or supervision work occurs.
+
+66. **EC-066 — Connect uses an immutable configuration snapshot**
+    - Mutating caller-owned configuration during dial/handshake cannot alter
+      address, preferences, capabilities, timeouts, or queue capacity for that
+      attempt. Invalid configuration fails before dial.
+
+67. **EC-067 — Terminal result survives event-delivery failure**
+    - Transport, protocol, backpressure, and callback terminal causes remain
+      observable with kind, phase, cause, and epoch even when an event observer
+      itself fails. No disconnected success replaces the cause.
+
+68. **EC-068 — Exact state machine and epoch monotonicity**
+    - Observe idle/connecting/connected/closing/idle. Duplicate connect reports
+      already-connecting/already-connected without interference. Close cancels
+      connect, idle close is safe, reconnect requires a new call, and each
+      successful epoch is nonzero and strictly greater than its predecessor.
+
+69. **EC-069 — Application queue capacity is exact**
+    - Default capacity accepts 64 pending application events and configured N
+      accepts N. Two terminal slots do not increase application capacity.
+
+70. **EC-070 — Backpressure terminates without hidden loss**
+    - Entry N+1 stops application acceptance without blocking IPC indefinitely,
+      closes only that epoch, drains accepted events in order, then delivers the
+      reserved backpressure error and disconnected event. No event is dropped
+      while the session continues.
+
+71. **EC-071 — Callback failures are observable**
+    - Throw/reject/panic from a message or lifecycle handler becomes one
+      `application` error and never success. Error-observer failure reaches the
+      runtime-native uncaught facility once and is not recursively dispatched.
+
+72. **EC-072 — TypeScript dispatch yields to IPC work**
+    - Below queue capacity, callbacks execute on distinct event-loop turns and
+      parsing, heartbeat, timeout, and close advance between them. The docs
+      identify synchronous CPU-bound application work as the remaining limit.
+
+73. **EC-073 — Required error kinds are distinguishable**
+    - Every `ENG-ERR-*` condition can be produced and distinguished through the
+      idiomatic result/error type, including phase, cause, optional epoch, and
+      applicable protocol status, without a success-shaped fallback.
+
+---
+
+## 11. Normative coverage
 
 | Contract area | Tests |
 |---|---|
-| Configuration and canonical address | EC-001 through EC-003 |
+| Configuration and canonical address | EC-001 through EC-003, EC-066 |
 | Dial-only transport and endpoint non-ownership | EC-004 through EC-008 |
 | Received handshake, ACK, and session assignment | EC-009 through EC-017 |
-| One-to-one session, epoch, event order, and close | EC-018 through EC-023 |
+| One-to-one session, epoch, event order, and close | EC-018 through EC-023, EC-067 through EC-071 |
 | Frame validation and payload bounds | EC-024 through EC-027, EC-035 through EC-042 |
 | Fragmentation | EC-027, EC-028, EC-041 through EC-045, EC-055 |
 | Control, heartbeat, ping/pong, and fatal errors | EC-029 through EC-031, EC-046 through EC-051 |
 | Correlation negotiation and behaviour | EC-015, EC-032 through EC-035, EC-052 through EC-056, EC-058 |
 | Engine application sends | EC-032 through EC-037, EC-053, EC-054, EC-057 through EC-062 |
-| Error observability | EC-009, EC-012 through EC-016, EC-022, EC-025, EC-026, EC-030, EC-031, EC-037 through EC-040, EC-049, EC-051, EC-052, EC-060 through EC-063 |
-| Product and public boundary | EC-008, EC-038, EC-064 |
+| Dispatch, backpressure, and runtime constraints | EC-021, EC-022, EC-069 through EC-072 |
+| Error observability | EC-009, EC-012 through EC-016, EC-022, EC-025, EC-026, EC-030, EC-031, EC-037 through EC-040, EC-049, EC-051, EC-052, EC-060 through EC-063, EC-067, EC-070, EC-071, EC-073 |
+| Product and public boundary | EC-008, EC-038, EC-064, EC-065 |
 
 When a normative contract change is proposed, its specification change, vector
 change where wire bytes are involved, and corresponding suite change must land
