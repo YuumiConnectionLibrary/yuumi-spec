@@ -6,6 +6,16 @@ through capabilities.
 
 ## 2026-07-30
 
+- Replaced the old topology suite with distinct executable Client-listener and
+  common Engine-dialer conformance contracts.
+- Added a machine-readable case manifest with stable IDs, deterministic case
+  structure, exact normative traceability, platform requirements, and a record
+  of removed listener-engine cases.
+- Added validation for duplicate or uncovered requirements, missing vectors,
+  role drift, application-shaped payloads, permanent platform skips, and
+  skipped mandatory results.
+- Added Windows, Linux, and macOS CI validation for vectors and conformance
+  contracts while reserving SDK harness implementation for Task 15.
 - Confirmed all 25 canonical wire binaries and their SHA-256 values unchanged
   after listener ownership inversion.
 - Added deterministic machine-readable vectors for Windows and Unix address

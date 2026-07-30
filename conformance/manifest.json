@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "description": "Executable conformance contracts for the Go listener and four engine dialers.",
+  "normative_sources": ["PROTOCOL.md", "CLIENT_API.md", "ENGINE_API.md"],
+  "canonical_vector_directory": "test-vectors",
+  "platform_policy": {
+    "required": ["windows", "linux", "macos"],
+    "execution": {"windows": ["local", "ci"], "linux": ["wsl", "ci"], "macos": ["ci", "real_hardware_final"]},
+    "permanent_skip": "forbidden"
+  },
+  "cases": [
+    {
+      "id": "CC-001", "contract": "client", "title": "Configuration and address validation have no side effects", "requirements": ["CLI-CFG-*", "CLI-ENDP-001", "CLI-ERR-001", "CLI-ERR-002", "PROTO-ADDR-*"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Fresh process with transport, goroutine, timer, unlink, and allocation probes.", "input": {"vectors": ["address_derivation.json"], "constructed": "Every valid/invalid address row and optional configuration boundary.", "payload_schema": "opaque"}, "action": "Construct each row; Open only accepted rows.",
+      "wire_result": "Rejected rows access no endpoint; accepted rows derive exact platform bytes.", "api_result": "Typed result and documented defaults match each row.", "cleanup": "Rejected rows own nothing; close accepted objects.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Fixture row, expected/actual bytes, error kind, first side effect."
+    },
+    {
+      "id": "CC-002", "contract": "client", "title": "Construction, token generation, and Decode are pure and typed", "requirements": ["CLI-API-001", "CLI-API-002", "CLI-API-009", "CLI-ROLE-001"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Entropy/codec seams visible; caller configuration mutable after construction.", "input": {"vectors": [], "constructed": "Generated tokens, copied config, valid values, nil/invalid Decode targets.", "payload_schema": "opaque"}, "action": "Generate, construct without Open, mutate caller state, and Decode boundaries.",
+      "wire_result": "No probe, handle, endpoint, goroutine, timer, or bytes.", "api_result": "32 lowercase hex secure token, frozen config, explicit Decode result.", "cleanup": "Close never-opened object idempotently.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Token format, mutated field, target type, observed side effect."
+    },
+    {
+      "id": "CC-003", "contract": "client", "title": "Open protects the listener before traffic", "requirements": ["CLI-API-003", "CLI-STATE-002", "CLI-ENDP-004", "CLI-ENDP-005", "PROTO-TRANS-001", "PROTO-SEC-001", "PROTO-SEC-002", "PROTO-SEC-003"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Canonical endpoint absent; security and traffic observers active.", "input": {"vectors": ["address_derivation.json"], "constructed": "One valid endpoint per platform.", "payload_schema": "opaque"}, "action": "Open; probe intended local and forbidden remote/wrong-user access.",
+      "wire_result": "Unix stream mode 0600; Windows byte-stream pipe with intended-user ACL and remote rejection; protection precedes traffic.", "api_result": "Open returns listening without waiting and never uses TCP.", "cleanup": "Close removes Unix node or releases pipe handles.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Platform, mode/ACL/transport, first-traffic order."
+    },
+    {
+      "id": "CC-004", "contract": "client", "title": "Endpoint liveness and stale cleanup are deterministic", "requirements": ["CLI-ENDP-002", "CLI-ENDP-003", "PROTO-ENDP-001", "PROTO-ENDP-002", "PROTO-ENDP-003", "PROTO-ENDP-004"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Live endpoint, busy Windows pipe, refused Unix stale node, unrelated path.", "input": {"vectors": ["address_derivation.json"], "constructed": "Each native liveness result without sleeps.", "payload_schema": "opaque"}, "action": "Open a second client for every condition.",
+      "wire_result": "Live/busy is never replaced; only refused Unix node is unlinked before bind.", "api_result": "Live returns endpoint_live; stale succeeds; unrelated path unchanged.", "cleanup": "Close owned listeners and reacquire endpoint with fresh object.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Liveness result and ordered path/handle operations."
+    },
+    {
+      "id": "CC-005", "contract": "client", "title": "Listening and connected are distinct states", "requirements": ["CLI-API-004", "CLI-API-007", "CLI-STATE-001", "CLI-STATE-002", "CLI-STATE-003", "CLI-STATE-006", "CLI-STATE-007"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Fresh client, multiple WaitConnected callers, controllable Open failure.", "input": {"vectors": ["handshake_valid.bin", "ack_json.bin", "control_session.bin"], "constructed": "Failed-open retry then valid candidate.", "payload_schema": "opaque"}, "action": "Observe states and cancel one waiter.",
+      "wire_result": "Handshake only after accept; waiter cancellation emits no bytes.", "api_result": "Open failure restores new; listening has no Session; remaining waiters share ready view.", "cleanup": "Close; all waiters unblock closed.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Ordered state/event and waiter results."
+    },
+    {
+      "id": "CC-006", "contract": "client", "title": "Invalid candidates do not consume the slot", "requirements": ["CLI-ADMIT-001", "CLI-ADMIT-002", "CLI-ADMIT-003", "CLI-ADMIT-004", "CLI-ERR-004", "CLI-ERR-006", "PROTO-ACK-001", "PROTO-SEC-004"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Listening client, candidate diagnostics, no session.", "input": {"vectors": ["ack_unadvertised_capability.bin", "control_session_empty_id.bin", "ack_json.bin", "control_session.bin"], "constructed": "Short ACK, invalid selection, PID mismatch, malformed assignment, disconnect, valid candidate.", "payload_schema": "opaque"}, "action": "Submit invalid candidates separately, then valid one.",
+      "wire_result": "Invalid candidate closes without framed pre-session error; valid candidate establishes.", "api_result": "Typed diagnostic has no epoch/lifecycle event and slot remains free.", "cleanup": "Close session and listener.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Candidate ordinal, bytes, diagnostic/status, slot state."
+    },
+    {
+      "id": "CC-007", "contract": "client", "title": "Exactly one session is established", "requirements": ["CLI-ADMIT-005", "CLI-STATE-003", "PROTO-SESS-001"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "One session and extra native dialers.", "input": {"vectors": ["handshake_valid.bin", "ack_json.bin", "control_session.bin"], "constructed": "Extra dials before and one dial after disconnect.", "payload_schema": "opaque"}, "action": "Attempt candidates while connected and after loss.",
+      "wire_result": "Extra candidates get no handshake; one later candidate may establish.", "api_result": "Active epoch, callbacks and negotiation stay unchanged.", "cleanup": "Close peers and client.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Dial ordinal, bytes, epoch, callback trace."
+    },
+    {
+      "id": "CC-008", "contract": "client", "title": "Go sends exact handshake and validates ACK plus assignment", "requirements": ["CLI-ADMIT-001", "CLI-ADMIT-002", "CLI-ROLE-002", "PROTO-CONN-001", "PROTO-CONN-002", "PROTO-SESS-002"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Protected listener; peer splits every exchange at each byte.", "input": {"vectors": ["handshake_valid.bin", "ack_json.bin", "control_session.bin"], "constructed": "All split points.", "payload_schema": "opaque"}, "action": "Dial, read handshake, return split ACK/assignment, record readiness.",
+      "wire_result": "Exact 16-byte handshake, exact 4-byte ACK, immediate assignment, no interposed frame.", "api_result": "Connected only after complete assignment and ready dispatch.", "cleanup": "Disconnect and close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Split point, offset, expected/actual hex, event order."
+    },
+    {
+      "id": "CC-009", "contract": "client", "title": "Encoding and capability negotiation are exact", "requirements": ["CLI-CFG-008", "CLI-CFG-009", "CLI-ERR-008", "CLI-ERR-009", "PROTO-CAP-001", "PROTO-ACK-001"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Separate candidate for every ACK selection.", "input": {"vectors": ["handshake_cap_correlation.bin", "ack_cap_correlation.bin", "ack_capabilities_none.bin", "ack_unadvertised_capability.bin", "ack_msgpack.bin"], "constructed": "Unadvertised, multi-bit, empty selections.", "payload_schema": "opaque"}, "action": "Establish or reject each candidate.",
+      "wire_result": "Only one offered encoding and exact capability subset accepted.", "api_result": "Valid view immutable; invalid ACK closes candidate with typed error.", "cleanup": "Close candidate/listener.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Offered/selected masks and error/status."
+    },
+    {
+      "id": "CC-010", "contract": "client", "title": "Frames, bounds, fragmentation, and Control decode defensively", "requirements": ["CLI-ERR-007", "CLI-ERR-010", "PROTO-FRAME-001", "PROTO-FRAG-001", "PROTO-CTRL-001", "PROTO-CTRL-002", "PROTO-CTRL-003"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Established JSON/MessagePack sessions with allocation, read, clock, and event probes.", "input": {"vectors": ["frame_channel_command.bin", "frame_oversized.bin", "frame_fragment_first.bin", "frame_fragment_last.bin", "control_ping.bin", "control_pong.bin", "control_error.bin"], "constructed": "Reserved flags, wrong channels, malformed codecs, short prefixes, stream splits, timeout/capacity boundaries.", "payload_schema": "opaque"}, "action": "Run each input in an isolated epoch.",
+      "wire_result": "Valid dispatch once; oversize rejected before allocation; safe fatal error then EOF; pong repeats seq.", "api_result": "403/404/413 distinct; unknown valid Control ignored; partial input never succeeds.", "cleanup": "Release buffers, timers, transport.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Vector/recipe, offset, allocation/read, status, event trace."
+    },
+    {
+      "id": "CC-011", "contract": "client", "title": "Correlation and messages route without overlap", "requirements": ["CLI-API-005", "CLI-API-006", "CLI-SESS-001", "CLI-SESS-002", "CLI-SESS-003", "PROTO-CORR-001", "PROTO-CORR-002", "PROTO-CORR-003"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Correlation session, concurrent requests, Messages consumer, virtual timeout.", "input": {"vectors": ["frame_correlated_request.bin", "frame_correlated_response.bin", "frame_correlated_not_negotiated.bin"], "constructed": "Concurrent IDs, timeout/reuse, late reply, unsolicited frame, application error.", "payload_schema": "opaque"}, "action": "Send/request, time out/reuse, inject late and unsolicited traffic.",
+      "wire_result": "Replies repeat IDs; application errors stay application frames; fire-and-forget has no prefix.", "api_result": "Replies only Request, unsolicited only Messages, late reply neither.", "cleanup": "Release IDs and close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Epoch, ID lifecycle, destination, frame hex."
+    },
+    {
+      "id": "CC-012", "contract": "client", "title": "Heartbeat and IPC progress while handlers are slow", "requirements": ["CLI-DISP-001", "CLI-DISP-005", "CLI-DISP-007", "CLI-ERR-010"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Session below capacity, barrier-blocked callback, virtual deadlines.", "input": {"vectors": ["control_heartbeat.bin", "control_ping.bin", "control_pong.bin"], "constructed": "Traffic, send, close, request/fragment deadlines while blocked.", "payload_schema": "opaque"}, "action": "Block handler, run IPC/deadlines, release handler.",
+      "wire_result": "Reads, writes, pong, heartbeat, timeouts, rejection, close meet bounds.", "api_result": "Callbacks serial, ordered, and lock-free for public methods.", "cleanup": "Release barrier; no callback/goroutine leak.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Operation timestamps/deadlines and callback order."
+    },
+    {
+      "id": "CC-013", "contract": "client", "title": "Bounded queues fail terminally on backpressure", "requirements": ["CLI-DISP-002", "CLI-DISP-003", "CLI-DISP-004", "CLI-ERR-011"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Default/configured capacities; consumers paused; terminal observer active.", "input": {"vectors": ["frame_channel_command.bin"], "constructed": "N entries then N+1 for Messages and callbacks.", "payload_schema": "opaque"}, "action": "Fill each queue independently and overflow once.",
+      "wire_result": "IPC never blocks indefinitely; affected epoch closes; later work stops.", "api_result": "N ordered entries, reserved error/disconnect, no silent drop.", "cleanup": "Drain, fail requests, return listening, close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "N, accepted count, overflow ordinal, cause, drain order."
+    },
+    {
+      "id": "CC-014", "contract": "client", "title": "Session loss returns to listening without process policy", "requirements": ["CLI-ROLE-003", "CLI-STATE-008", "CLI-SESS-004", "CLI-SESS-005", "CLI-SESS-006"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Session with accepted events, requests, fragments; no process helper.", "input": {"vectors": ["frame_fragment_first.bin"], "constructed": "Peer disconnect then application-initiated later dial.", "payload_schema": "opaque"}, "action": "Disconnect, observe drain, establish replacement.",
+      "wire_result": "Old partial/unsent work discarded; listener sends fresh handshake later.", "api_result": "Requests session_closed; accepted events precede disconnected; no spawn/restart.", "cleanup": "Close replacement/listener.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Epochs, event order, request results, process operations."
+    },
+    {
+      "id": "CC-015", "contract": "client", "title": "Close is permanent, idempotent, and leak-free", "requirements": ["CLI-API-008", "CLI-STATE-004", "CLI-STATE-005", "CLI-ENDP-006", "CLI-SESS-007", "CLI-ADMIT-006", "CLI-ERR-005", "CLI-ERR-014"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Clients blocked in accept, handshake, I/O, wait, request, callback, heartbeat.", "input": {"vectors": [], "constructed": "Close each state, repeated/inside-callback Close, fatal accept failure.", "payload_schema": "opaque"}, "action": "Trigger terminal action and bounded completion.",
+      "wire_result": "All endpoint/session resources close; no later bytes.", "api_result": "Work unblocks typed; Messages closes; no later callback; reopen forbidden.", "cleanup": "Assert zero handles, goroutines, timers, queues, waits, requests.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "State, blocked operation, elapsed bound, resource inventory."
+    },
+    {
+      "id": "CC-016", "contract": "client", "title": "New epoch rejects every stale authority", "requirements": ["CLI-STATE-009", "CLI-STATE-010", "CLI-SESS-004", "CLI-ERR-012", "CLI-ERR-013", "PROTO-EPOCH-001"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Old/replacement sessions with captured sends, responders, timers, fragments, correlations, events, callbacks.", "input": {"vectors": ["control_session.bin", "frame_fragment_first.bin", "frame_correlated_response.bin"], "constructed": "Release each old authority after replacement.", "payload_schema": "opaque"}, "action": "Attempt each stale action.",
+      "wire_result": "No stale bytes; replacement unchanged.", "api_result": "Epoch nonzero/increasing; stale work typed or discarded without new event.", "cleanup": "Close replacement and release old state.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Authority, epochs, bytes/events, replacement state."
+    },
+    {
+      "id": "CC-017", "contract": "client", "title": "Executable public surface is client-only and schema-free", "requirements": ["CLI-ROLE-004", "CLI-ROLE-005", "CLI-API-005", "CLI-API-006"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Consumer build and negative API probes.", "input": {"vectors": [], "constructed": "Positive Client API; negative non-Go client, engine listener, Runner requirement, process policy, arbitrary address, application envelope.", "payload_schema": "opaque"}, "action": "Compile/import probes and round-trip scalar/list/map payloads.",
+      "wire_result": "Opaque values encode directly; no lifecycle/schema field added.", "api_result": "Only contracted surface compiles; Runner not needed.", "cleanup": "Close and remove harness artifacts only.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Probe source/diagnostic and encoded value."
+    },
+    {
+      "id": "CC-018", "contract": "client", "title": "Every client error kind is distinguishable", "requirements": ["CLI-ERR-*", "CLI-DISP-006"], "endpoint_under_test": "go_client_listener",
+      "preconditions": "Deterministic trigger for every CLI-ERR ID including callback/OnError panic.", "input": {"vectors": ["handshake_bad_magic.bin", "frame_oversized.bin", "control_error.bin"], "constructed": "Expected kind, phase, epoch, status, terminality table.", "payload_schema": "opaque"}, "action": "Trigger rows and inspect errors.Is/errors.As/events.",
+      "wire_result": "Only permitted bytes; no success fallback.", "api_result": "Kind, English cause, phase, epoch, status, terminal count match.", "cleanup": "Close or verify teardown each row.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Expected/actual fields, duplicates, unexpected success."
+    },
+    {
+      "id": "EC-001", "contract": "engine", "title": "Configuration validation is pure and snapshot-based", "requirements": ["ENG-CFG-*", "ENG-API-001", "ENG-ROLE-001", "ENG-ERR-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Dial, endpoint, thread/task, timer, caller-mutation probes.", "input": {"vectors": ["address_derivation.json"], "constructed": "Every invalid/default option and mutation during blocked connect.", "payload_schema": "opaque"}, "action": "Create; connect valid rows; mutate caller config; release seam.",
+      "wire_result": "Invalid rows never dial; valid attempt uses frozen values only.", "api_result": "Defaults/validation match ENG-CFG; no retry.", "cleanup": "Close; assert idle/no work.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Field, value, timing, first side effect, error."
+    },
+    {
+      "id": "EC-002", "contract": "engine", "title": "Canonical address is byte-identical", "requirements": ["ENG-CONN-001", "ENG-ERR-002", "PROTO-ADDR-*"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Controlled temp/filesystem encoding seams.", "input": {"vectors": ["address_derivation.json"], "constructed": "Valid, invalid, changed token/name, macOS boundaries.", "payload_schema": "opaque"}, "action": "Begin connect and observe target or pre-dial rejection.",
+      "wire_result": "Exact fixture address; no normalization/relocation/truncation/fallback.", "api_result": "Invalid/overlong typed before dial.", "cleanup": "Cancel observed dial; idle.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Row and expected/actual target bytes."
+    },
+    {
+      "id": "EC-003", "contract": "engine", "title": "Every engine is only a native dialer", "requirements": ["ENG-ROLE-002", "ENG-ROLE-003", "ENG-CONN-002", "PROTO-TRANS-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Private Go listener owns/protects canonical endpoint; TCP trap active.", "input": {"vectors": [], "constructed": "Unix stream on Linux/macOS; byte-stream pipe on Windows.", "payload_schema": "opaque"}, "action": "Connect once and inspect transport/endpoint operations.",
+      "wire_result": "Only dial; never bind/listen/accept/probe/unlink/change ACL or use TCP.", "api_result": "Connect reaches handshake on required transport.", "cleanup": "Close; Go endpoint unchanged/usable.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Ordered transport trace and mutation."
+    },
+    {
+      "id": "EC-004", "contract": "engine", "title": "Dial failures are explicit and grant no ownership", "requirements": ["ENG-CONN-003", "ENG-ERR-003", "ENG-ERR-004"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Absent, refused, denied, busy, timed-out endpoints.", "input": {"vectors": [], "constructed": "Each failure then later ready Go listener.", "payload_schema": "opaque"}, "action": "Connect once per failure; retry only by later application call.",
+      "wire_result": "No create/remove/replace/security operation and no hidden retry.", "api_result": "Dial/timeout causes distinct; explicit later connect may succeed.", "cleanup": "Close engine/listener.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Condition, attempt count, cause, time, mutation trace."
+    },
+    {
+      "id": "EC-005", "contract": "engine", "title": "Handshake is exact and invalid input writes nothing", "requirements": ["ENG-CONN-004", "ENG-CONN-005", "PROTO-HS-001", "PROTO-HS-002", "PROTO-VER-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Private listener splits/terminates handshake at each offset.", "input": {"vectors": ["handshake_valid.bin", "handshake_bad_magic.bin", "handshake_bad_version.bin", "handshake_encoding_unsupported.bin"], "constructed": "Empty/short reads, PID mismatch, canonical invalid inputs.", "payload_schema": "opaque"}, "action": "Separate connect per input; capture output to EOF.",
+      "wire_result": "Parse after 16 bytes only; invalid closes with zero ACK/Control/application bytes.", "api_result": "400/401/402/415/read/transport typed; no session event.", "cleanup": "Idle after each attempt.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Offset, input/output hex, status, phase, events."
+    },
+    {
+      "id": "EC-006", "contract": "engine", "title": "Encoding and capability intersection are deterministic", "requirements": ["ENG-CFG-003", "ENG-CFG-004", "ENG-CONN-004", "ENG-ERR-007", "ENG-ERR-008", "PROTO-CAP-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Each valid preference/capability configuration.", "input": {"vectors": ["handshake_valid.bin", "handshake_cap_correlation.bin", "ack_json.bin", "ack_msgpack.bin", "ack_cap_correlation.bin", "ack_capabilities_none.bin"], "constructed": "Known/reserved bits and intersection outcomes.", "payload_schema": "opaque"}, "action": "Connect rows and compare ACK bytes.",
+      "wire_result": "First configured common encoding; exact implemented intersection.", "api_result": "Immutable session view; invalid config pre-dial.", "cleanup": "Close each session.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Preferences, masks, ACK hex."
+    },
+    {
+      "id": "EC-007", "contract": "engine", "title": "ACK and assignment establish in exact order", "requirements": ["ENG-CONN-006", "ENG-API-002", "ENG-API-007", "PROTO-CONN-002", "PROTO-SESS-002"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Valid handshake and output/event recorder.", "input": {"vectors": ["handshake_valid.bin", "ack_json.bin", "control_session.bin"], "constructed": "Valid printable session IDs at 1/128-byte boundaries.", "payload_schema": "opaque"}, "action": "Connect and record writes/state/view/events.",
+      "wire_result": "Exact ACK then one assignment with nothing between.", "api_result": "Success/connected only after assignment write and dispatch ready.", "cleanup": "Close; idle.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Byte/event/state order and ID boundary."
+    },
+    {
+      "id": "EC-008", "contract": "engine", "title": "Establishment write failure creates no session", "requirements": ["ENG-CONN-007", "ENG-ERR-005"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Valid handshake; partial/failed ACK/assignment writes.", "input": {"vectors": ["ack_json.bin", "control_session.bin"], "constructed": "Failure at each output byte.", "payload_schema": "opaque"}, "action": "Connect per injected failure.",
+      "wire_result": "Only written prefix appears; close; no later frame.", "api_result": "One phased error; no connected/disconnected; idle.", "cleanup": "No session/queue/timer/transport remains.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Offset, prefix, phase, event count."
+    },
+    {
+      "id": "EC-009", "contract": "engine", "title": "State machine rejects duplicate connect", "requirements": ["ENG-STATE-001", "ENG-STATE-002", "ENG-STATE-003", "ENG-STATE-004", "ENG-STATE-005", "ENG-ERR-015"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Dial/handshake barriers and established session.", "input": {"vectors": ["handshake_valid.bin"], "constructed": "Second connect while connecting/connected; operation while closing.", "payload_schema": "opaque"}, "action": "Invoke duplicates at each state.",
+      "wire_result": "No duplicate dial/handshake; original unchanged.", "api_result": "Exact state sequence and already_* or session_closed.", "cleanup": "Close; idle.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "States, results, dial count, epoch."
+    },
+    {
+      "id": "EC-010", "contract": "engine", "title": "Close is idempotent; reconnect is explicit", "requirements": ["ENG-API-003", "ENG-STATE-006", "ENG-STATE-007", "ENG-SESS-005", "ENG-ERR-010"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Engines idle, connecting, connected, blocked in owned work.", "input": {"vectors": [], "constructed": "Repeated close each state then later application connect.", "payload_schema": "opaque"}, "action": "Close repeatedly, observe silence, explicitly reconnect.",
+      "wire_result": "Transport closes; no automatic dial; Go endpoint untouched; explicit call dials.", "api_result": "Idempotent; cancelled connect session_closed; idle terminal state.", "cleanup": "Close replacement; zero resources.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "State, connect count, resources, endpoint metadata."
+    },
+    {
+      "id": "EC-011", "contract": "engine", "title": "Frames and oversize bounds are exact", "requirements": ["ENG-SESS-004", "ENG-ERR-006", "PROTO-FRAME-001", "PROTO-CTRL-002"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Sessions with allocation/read probes and split writes.", "input": {"vectors": ["frame_channel_command.bin", "frame_oversized.bin", "control_error.bin"], "constructed": "Every split and 16 MiB boundaries.", "payload_schema": "opaque"}, "action": "Send valid/oversized frames in isolated epochs.",
+      "wire_result": "Valid dispatch once; oversize before body read/allocation; Control error last.", "api_result": "Opaque valid input; one 413 disconnect.", "cleanup": "Release decoder/transport.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Offset, declared/allocated/read size, output, events."
+    },
+    {
+      "id": "EC-012", "contract": "engine", "title": "Malformed frames never partially deliver", "requirements": ["ENG-SESS-003", "ENG-SESS-004", "ENG-ERR-006"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "One compatible session per malformed input.", "input": {"vectors": ["frame_channel_command.bin", "frame_correlated_not_negotiated.bin"], "constructed": "Reserved flags, LAST-only, bad channel/direction, short prefix, malformed codecs.", "payload_schema": "opaque"}, "action": "Inject each and capture events/output.",
+      "wire_result": "No partial message; safe failure sends one 403 then closes.", "api_result": "One protocol error and reasoned disconnect with epoch.", "cleanup": "Release buffers; idle.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Mutation, offset, events, status, final frame."
+    },
+    {
+      "id": "EC-013", "contract": "engine", "title": "Fragmentation is bounded and epoch-local", "requirements": ["ENG-CFG-009", "ENG-STATE-009", "PROTO-FRAG-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Short timeout and active limit one.", "input": {"vectors": ["frame_fragment_first.bin", "frame_fragment_last.bin", "frame_fragment_correlated_first.bin", "frame_fragment_correlated_last.bin"], "constructed": "Changed prefixes, interleaving, timeout, capacity, cumulative oversize, reconnect reuse.", "payload_schema": "opaque"}, "action": "Run valid and invalid sequences separately.",
+      "wire_result": "Valid emits once; invalid yields exact 403/404/413 before unsafe allocation.", "api_result": "No partial delivery; no state survives terminal boundary.", "cleanup": "Release IDs/buffers.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "IDs, prefixes, size/count, status, epoch."
+    },
+    {
+      "id": "EC-014", "contract": "engine", "title": "Correlation preserves responder authority", "requirements": ["ENG-API-005", "ENG-SESS-002", "ENG-SESS-003", "PROTO-CORR-001", "PROTO-CORR-002", "PROTO-CORR-003"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Correlation/baseline sessions and pending-ID probes.", "input": {"vectors": ["frame_correlated_request.bin", "frame_correlated_response.bin", "frame_correlated_not_negotiated.bin"], "constructed": "Success, application error, double response, reuse, timeout, late reply, unnegotiated use.", "payload_schema": "opaque"}, "action": "Receive, respond, exercise lifecycle, reconnect for stale tests.",
+      "wire_result": "Response repeats channel/ID; invalid or stale writes nothing/closes per protocol.", "api_result": "Responder only correlated, single-use, epoch-bound.", "cleanup": "Release IDs/responders; close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "ID lifecycle, calls, frame hex, epoch."
+    },
+    {
+      "id": "EC-015", "contract": "engine", "title": "Public sends are directional, ordered, and await writes", "requirements": ["ENG-API-004", "ENG-API-009", "ENG-API-010", "ENG-API-011", "ENG-API-012"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "JSON/MessagePack sessions, order recorder, injected write failure.", "input": {"vectors": ["frame_correlated_response.bin"], "constructed": "Valid output channels, forbidden Control/directions, serialization/size/stale/write failures.", "payload_schema": "opaque"}, "action": "Submit and await each send; capture peer order.",
+      "wire_result": "Only valid directions/codec; sequential order; failures never succeed.", "api_result": "Explicit result and documented concurrent order; no envelope.", "cleanup": "Close; discard unsent output.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Submission/completion order, codec, frame, error."
+    },
+    {
+      "id": "EC-016", "contract": "engine", "title": "Control and fatal ordering are exact", "requirements": ["ENG-SESS-004", "PROTO-CTRL-001", "PROTO-CTRL-002", "PROTO-CTRL-003"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "MessagePack application session with Control recorder.", "input": {"vectors": ["control_heartbeat.bin", "control_ping.bin", "control_pong.bin", "control_error.bin"], "constructed": "Unknown valid type, malformed JSON/type, post-error send.", "payload_schema": "opaque"}, "action": "Send each Control input separately.",
+      "wire_result": "Control JSON; same-seq pong; unknown ignored; fatal last/no later output.", "api_result": "Never application message; malformed 403; peer code preserved.", "cleanup": "Close/verify teardown.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Semantic input/output, seq/code, events, EOF order."
+    },
+    {
+      "id": "EC-017", "contract": "engine", "title": "IPC progresses independently of slow handlers", "requirements": ["ENG-DISP-001", "ENG-DISP-002", "ENG-DISP-003", "ENG-API-006"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Session below capacity, blocked handler, virtual clock.", "input": {"vectors": ["control_heartbeat.bin", "control_ping.bin"], "constructed": "Read/write/pong/heartbeat/expiry/close while blocked.", "payload_schema": "opaque"}, "action": "Block handler, advance IPC/deadlines, close, release.",
+      "wire_result": "IPC/timers meet bounds without application logic on IPC path.", "api_result": "Serial lifecycle order; public methods need no callback lock.", "cleanup": "Release; dispatcher/transport end.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Handler interval, IPC times, bound, event order."
+    },
+    {
+      "id": "EC-018", "contract": "engine", "title": "Backpressure is terminal and observable", "requirements": ["ENG-CFG-007", "ENG-DISP-004", "ENG-DISP-005", "ENG-DISP-006", "ENG-API-008", "ENG-ERR-009"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Paused dispatcher at default 64 and capacity N.", "input": {"vectors": ["frame_channel_command.bin"], "constructed": "N complete events then N+1.", "payload_schema": "opaque"}, "action": "Fill, overflow, drain.",
+      "wire_result": "IPC does not block; session closes; later work rejected.", "api_result": "N ordered then reserved error/disconnect; terminal result backpressure.", "cleanup": "Idle; queues/slots released.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "N, counts, overflow, reserved order, terminal result."
+    },
+    {
+      "id": "EC-019", "contract": "engine", "title": "Callback failures and TypeScript turns are observable", "requirements": ["ENG-DISP-007", "ENG-DISP-008", "ENG-ERR-012"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Failing message/lifecycle/error observers and TypeScript turn probes.", "input": {"vectors": ["frame_channel_command.bin"], "constructed": "Throw/reject/panic each observer; two TypeScript callbacks.", "payload_schema": "opaque"}, "action": "Trigger failures and verify distinct TypeScript turns.",
+      "wire_result": "Terminal cause governs transport; TypeScript timers/close advance between callbacks.", "api_result": "Application error once; native uncaught once; no recursion.", "cleanup": "Close; no callback after disconnected.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Language, ordinal, uncaught count, turn, terminal result."
+    },
+    {
+      "id": "EC-020", "contract": "engine", "title": "Disconnect clears session state before idle", "requirements": ["ENG-SESS-001", "ENG-SESS-005", "ENG-DISP-006"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Session with fragments, correlations, timers, queued sends, responder, events.", "input": {"vectors": ["frame_fragment_first.bin", "frame_correlated_request.bin"], "constructed": "Go/local close, heartbeat timeout, protocol/transport failure.", "payload_schema": "opaque"}, "action": "Trigger each reason and record cleanup/order.",
+      "wire_result": "No old output after teardown; Go endpoint untouched.", "api_result": "One reasoned disconnected; state cleared before idle.", "cleanup": "Zero buffers/timers/IDs/responders/queues/tasks/handles.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Trigger, reason, order, resource inventory."
+    },
+    {
+      "id": "EC-021", "contract": "engine", "title": "Replacement epoch rejects stale work", "requirements": ["ENG-STATE-008", "ENG-STATE-009", "ENG-ERR-011", "PROTO-EPOCH-001"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Captured old authorities and replacement session.", "input": {"vectors": ["control_session.bin", "frame_fragment_first.bin", "frame_correlated_request.bin"], "constructed": "Release each authority after explicit reconnect.", "payload_schema": "opaque"}, "action": "Attempt stale work against current session.",
+      "wire_result": "No stale bytes; replacement unchanged.", "api_result": "New ID; nonzero increasing epoch; stale typed/discarded.", "cleanup": "Close replacement; release old objects.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Authority, epochs/IDs, bytes/events, state."
+    },
+    {
+      "id": "EC-022", "contract": "engine", "title": "Every engine error kind is distinguishable", "requirements": ["ENG-ERR-*", "ENG-API-008"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Deterministic trigger for each ENG-ERR ID and observer failure.", "input": {"vectors": ["handshake_bad_magic.bin", "frame_oversized.bin", "control_error.bin"], "constructed": "Expected kind/phase/status/epoch/terminality table.", "payload_schema": "opaque"}, "action": "Trigger rows; inspect result/events/terminal result.",
+      "wire_result": "Only permitted bytes; no empty/success fallback.", "api_result": "Typed fields and single cause match even if observer fails.", "cleanup": "Close or verify idle each row.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Expected/actual fields, terminal result, duplicates."
+    },
+    {
+      "id": "EC-023", "contract": "engine", "title": "Public surface has no listener, client, Runner, or schema policy", "requirements": ["ENG-ROLE-004", "ENG-ROLE-005", "ENG-CFG-012", "ENG-API-004", "ENG-API-005", "ENG-API-006", "ENG-API-007", "ENG-API-008", "ENG-API-009"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Normal consumer build/import and negative probes for every SDK.", "input": {"vectors": [], "constructed": "Positive engine API; negative listener/server/accept, public client, Runner requirement, arbitrary address, process policy, envelope.", "payload_schema": "opaque"}, "action": "Run probes and scalar/list/map round trip.",
+      "wire_result": "Only dial; opaque values unchanged by schema policy.", "api_result": "Required operations compile; forbidden public probes fail.", "cleanup": "Close; remove harness artifacts only.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "SDK, probe source/diagnostic, encoded value."
+    },
+    {
+      "id": "EC-024", "contract": "engine", "title": "Environment adapter is configuration-only", "requirements": ["ENG-ENV-001", "ENG-ENV-002"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Valid/missing/malformed environment rows and transport/process probes.", "input": {"vectors": [], "constructed": "YUUMI_ENDPOINT_NAME and YUUMI_TOKEN rows.", "payload_schema": "opaque"}, "action": "Invoke adapter only.",
+      "wire_result": "No dial/listener/spawn/discovery/retry/supervision/bytes.", "api_result": "Valid EngineConfig or typed configuration error.", "cleanup": "Restore environment; no resource exists.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "Variable state, result, first forbidden effect."
+    },
+    {
+      "id": "EC-025", "contract": "engine", "title": "Cleanup and runtime constraints hold for four engines", "requirements": ["ENG-API-003", "ENG-DISP-003", "ENG-DISP-008", "ENG-SESS-005", "ENG-ERR-013", "ENG-ERR-014"], "endpoint_under_test": "engine_dialer",
+      "preconditions": "Each SDK blocked in dial, handshake, I/O, dispatch, heartbeat, close.", "input": {"vectors": [], "constructed": "Every language/platform pair with bounded teardown.", "payload_schema": "opaque"}, "action": "Inject close/runtime failures each phase.",
+      "wire_result": "Transport closes; no endpoint mutation/later output.", "api_result": "Work stops; Python explicit daemon threads, Rust stable callbacks, TypeScript yields, errors typed.", "cleanup": "Zero handles/tasks/threads/timers/queues/waiters/state.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "SDK/platform/phase/time/error/resource inventory."
+    }
+  ],
+  "legacy_cases_removed": [
+    {"source_commit": "d840f21", "legacy_id": "EC-005", "title": "Open, mutation, and repeated close state rules", "reason": "Engine listener open was replaced by one dial attempt."},
+    {"source_commit": "d840f21", "legacy_id": "EC-006", "title": "A live endpoint is never replaced", "reason": "Endpoint liveness belongs to Go."},
+    {"source_commit": "d840f21", "legacy_id": "EC-007", "title": "A stale endpoint is removed or released", "reason": "Stale cleanup belongs to Go."},
+    {"source_commit": "d840f21", "legacy_id": "EC-008", "title": "Access controls precede handshake traffic", "reason": "Endpoint security ownership belongs to Go."},
+    {"source_commit": "d840f21", "legacy_id": "EC-010", "title": "Orderly close releases all owned state", "reason": "Engine close now releases dial/session resources only."},
+    {"source_commit": "d840f21", "legacy_id": "EC-024", "title": "max_sessions = 1 counts pre-session connections", "reason": "Engine listener capacity is forbidden."},
+    {"source_commit": "d840f21", "legacy_id": "EC-025", "title": "max_sessions = N accepts N sessions", "reason": "Engine is a single-session dialer."},
+    {"source_commit": "d840f21", "legacy_id": "EC-033", "title": "Endpoint and session failures remain isolated", "reason": "Accept-loop coverage was replaced by dial/session cases."}
+  ]
+}

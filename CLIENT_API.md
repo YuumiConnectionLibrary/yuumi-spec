@@ -341,35 +341,18 @@ conformance suite.
 
 ## 10. Conformance trace
 
-The [`Client Conformance Suite`](./CLIENT_CONFORMANCE.md) supplies the wire,
-endpoint, platform, and Task 03b behavioural cases.
+The [`Client Conformance Contract`](./CLIENT_CONFORMANCE.md) and
+[`conformance/manifest.json`](./conformance/manifest.json) supply the executable
+wire, endpoint, platform, dispatch, and cleanup cases. The manifest references
+every concrete `CLI-*` identifier. Its exact flat mapping is validated and can
+be printed with:
 
-| Requirement IDs | Conformance cases |
-|---|---|
-| `CLI-ROLE-*` | CC-004 through CC-007, CC-021, **CC-022** |
-| `CLI-API-*`, `CLI-CFG-*` | CC-001, CC-007 through CC-009, CC-016 through CC-018, **CC-022** through **CC-024** |
-| `CLI-STATE-*` | CC-007, CC-009 through CC-012, CC-019, CC-020, **CC-025** |
-| `CLI-ENDP-*` | CC-001 through CC-007, **CC-026** |
-| `CLI-ADMIT-*` | CC-008 through CC-013, **CC-027** |
-| `CLI-SESS-*` | CC-014 through CC-020, **CC-028**, **CC-029** |
-| `CLI-DISP-*` | CC-016 through CC-018, **CC-030** through **CC-033** |
-| `CLI-ERR-*` | CC-001, CC-005 through CC-013, CC-015 through CC-020, **CC-034** |
+```text
+python tools/conformance_tool.py --coverage
+```
 
-Task 03b cases:
-
-- **CC-022** `NewClient` has zero transport and goroutine side effects;
-- **CC-023** every optional field has the documented zero/default behaviour;
-- **CC-024** token generation and `Decode` boundaries are typed;
-- **CC-025** exact states, failed-open retry, permanent close, and monotonic epoch;
-- **CC-026** deterministic close on Windows, Linux, and macOS;
-- **CC-027** connected-state candidates are rejected without session impact;
-- **CC-028** pending request and queued-event behaviour on disconnect/close;
-- **CC-029** stale send/responder/timeout/fragment/correlation isolation;
-- **CC-030** both queue boundaries use default 64 and configured capacity;
-- **CC-031** overflow terminates with typed backpressure and no silent drop;
-- **CC-032** callback ordering, lock freedom, panic observability, and close;
-- **CC-033** accept/I/O/heartbeat progress while handlers are blocked;
-- **CC-034** every required error kind is constructible and distinguishable.
-
-The contract is implementable with ordinary Go goroutines and
+The mapping is deliberately generated instead of maintained as wildcard ranges
+in two documents. Validation fails if a requirement is missing, an identifier
+is duplicated, a vector does not exist, or a mandatory platform case can be
+skipped. The contract remains implementable with ordinary Go goroutines and
 `Microsoft/go-winio`; it requires no engine lifecycle helper.

@@ -125,8 +125,11 @@ Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
 | **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine + dialer | `npm install yuumi` *(planned)* |
 
 All SDKs implement their role-specific contract and must pass the applicable
-conformance tests. The four engine SDKs share the numbered
-[`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). Wire conformance is
+conformance cases. Go uses the
+[`Client Conformance Contract`](./CLIENT_CONFORMANCE.md); the four engine SDKs
+share the [`Engine Conformance Contract`](./ENGINE_CONFORMANCE.md). Their case
+inventory and exact requirement mapping live in
+[`conformance/manifest.json`](./conformance/manifest.json). Wire conformance is
 proven with the canonical vectors in [`test-vectors/`](./test-vectors/).
 
 ---
@@ -172,16 +175,19 @@ The complete canonical vector inventory is maintained in
 Address derivation uses the machine-readable
 [`address_derivation.json`](./test-vectors/address_derivation.json). The
 generated [`manifest.json`](./test-vectors/manifest.json) classifies every wire
-fixture and pins binary and annotation SHA-256 values. Validate everything with:
+fixture and pins binary and annotation SHA-256 values. Validate the frozen
+vectors and both conformance contracts with:
 
 ```text
 python tools/vector_tool.py
+python tools/conformance_tool.py --self-test
 ```
 
 Go acceptance is defined by
 [`CLIENT_CONFORMANCE.md`](./CLIENT_CONFORMANCE.md). Engine acceptance is
-defined by [`ENGINE_CONFORMANCE.md`](./ENGINE_CONFORMANCE.md), which
-distinguishes baseline tests from capability-gated cases.
+defined by [`ENGINE_CONFORMANCE.md`](./ENGINE_CONFORMANCE.md). Print the exact
+flat requirement-to-case mapping with
+`python tools/conformance_tool.py --coverage`.
 
 ---
 

@@ -63,8 +63,8 @@ An engine is constructed from an explicit configuration value:
 
 ## 3. Required behavioural surface
 
-Every engine SDK **MUST** expose these operations or direct language-native
-equivalents:
+The required behavioural surface consists of these operations or direct
+language-native equivalents:
 
 | Operation | Normative behaviour |
 |---|---|
@@ -279,31 +279,19 @@ next library-major release, but the target surface is unambiguous.
 
 ## 10. Conformance trace
 
-The [`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md) supplies the wire,
-transport, and Task 03 behavioural cases.
+The [`Engine Conformance Contract`](./ENGINE_CONFORMANCE.md) and
+[`conformance/manifest.json`](./conformance/manifest.json) supply one common
+executable inventory for C++, Python, Rust, and TypeScript. Every `EC-*` case
+names `engine_dialer` as its endpoint under test. The manifest references every
+concrete `ENG-*` identifier; its exact flat mapping is validated and can be
+printed with:
 
-| Requirement IDs | Conformance cases |
-|---|---|
-| `ENG-ROLE-*`, `ENG-ENV-*` | EC-005, EC-008, EC-064, **EC-065** |
-| `ENG-CFG-*` | EC-001 through EC-003, EC-018, **EC-066** |
-| `ENG-API-*` | EC-008, EC-032 through EC-035, EC-057 through EC-064, **EC-067** |
-| `ENG-STATE-*` | EC-018 through EC-023, EC-060, **EC-068** |
-| `ENG-CONN-*` | EC-004 through EC-017 |
-| `ENG-DISP-*` | EC-021, EC-022, **EC-069** through **EC-072** |
-| `ENG-SESS-*` | EC-019, EC-020, EC-023, EC-028 through EC-034, EC-046 through EC-060 |
-| `ENG-ERR-*` | EC-001, EC-006, EC-009, EC-012 through EC-016, EC-022, EC-025 through EC-063, **EC-073** |
+```text
+python tools/conformance_tool.py --coverage
+```
 
-Task 03 cases:
-
-- **EC-065** environment adapter is read-only and never starts work;
-- **EC-066** configuration snapshot is immutable during connect;
-- **EC-067** terminal result remains observable independently of callbacks;
-- **EC-068** exact states, duplicate connect, cancellation, and monotonic epoch;
-- **EC-069** queue capacity 64/default and configured boundary;
-- **EC-070** overflow terminates with ordered backpressure error and no drop;
-- **EC-071** callback failure becomes an observable application error;
-- **EC-072** TypeScript yields between callbacks so IPC timers advance;
-- **EC-073** every required error kind is constructible and distinguishable.
-
-No requirement needs a Python native installation build, an unstable Rust async
-closure, or a TypeScript runtime dependency beyond the MessagePack codec.
+The mapping is generated instead of maintained as wildcard ranges in two
+documents. Validation fails if a requirement is missing, an ID is duplicated,
+a vector does not exist, a platform is omitted, or a mandatory case can be
+skipped. No case requires a Python native installation build, an unstable Rust
+async closure, or a TypeScript runtime dependency beyond the MessagePack codec.

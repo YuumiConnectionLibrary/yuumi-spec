@@ -39,7 +39,8 @@ any transport reachable from another host are forbidden.
 | macOS | Unix domain stream socket |
 | Windows | Named Pipe in byte-stream mode |
 
-On the same platform both endpoints **MUST** use the transport in this table.
+**PROTO-TRANS-001** — On the same platform both endpoints **MUST** use the
+transport in this table.
 Transport fallback between Unix domain sockets and Named Pipes is forbidden.
 
 ### 2.1 Address derivation
@@ -51,9 +52,9 @@ Address derivation takes two application-provided values:
 - `token`: exactly 32 lowercase hexadecimal characters encoding 128 bits
   produced by a cryptographically secure random generator.
 
-Neither value is case-folded, Unicode-normalized, truncated, or otherwise
-rewritten. Both values **MUST** be validated before any transport address is
-derived or used.
+**PROTO-ADDR-001** — Neither value is case-folded, Unicode-normalized,
+truncated, or otherwise rewritten. Both values **MUST** be validated before
+any transport address is derived or used.
 
 On Windows, the canonical address is:
 
@@ -79,30 +80,32 @@ characters per byte, and is then truncated to its first 32 characters. The
 token therefore participates in Unix address derivation without appearing in
 clear text in the pathname.
 
-`<os_temp_dir>` **MUST** come from the platform temporary-directory API. SDKs
-**MUST NOT** hardcode `/tmp`, `/var/tmp`, `%TEMP%`, or another directory. To
-compose the Unix address, remove every trailing `/` byte from `<os_temp_dir>`,
-then concatenate one `/` byte and `yuumi-<digest>.sock`. This also maps the root
-directory `/` to `/yuumi-<digest>.sock` and guarantees exactly one separator.
+**PROTO-ADDR-002** — `<os_temp_dir>` **MUST** come from the platform
+temporary-directory API. SDKs **MUST NOT** hardcode `/tmp`, `/var/tmp`,
+`%TEMP%`, or another directory. To compose the Unix address, remove every
+trailing `/` byte from `<os_temp_dir>`, then concatenate one `/` byte and
+`yuumi-<digest>.sock`. This also maps the root directory `/` to
+`/yuumi-<digest>.sock` and guarantees exactly one separator.
 
-The complete Unix pathname **MUST** be encoded with the platform filesystem
-encoding and validated in bytes, not characters, before `listen` or `dial`.
-On macOS, the encoded pathname plus its terminating NUL **MUST** fit the
-104-byte `sun_path` field, so the encoded pathname is at most 103 bytes. An
-address too long for the platform socket-address structure **MUST** fail as a
-configuration error; an SDK **MUST NOT** truncate, relocate, or apply another
-hash.
+**PROTO-ADDR-003** — The complete Unix pathname **MUST** be encoded with the
+platform filesystem encoding and validated in bytes, not characters, before
+`listen` or `dial`. On macOS, the encoded pathname plus its terminating NUL
+**MUST** fit the 104-byte `sun_path` field, so the encoded pathname is at most
+103 bytes. An address too long for the platform socket-address structure
+**MUST** fail as a configuration error; an SDK **MUST NOT** truncate, relocate,
+or apply another hash.
 
-For the same platform, `endpoint_name`, `token`, and OS temporary directory, all
-five SDKs **MUST** produce byte-identical addresses. The token is part of the
-address and access-control model. It **SHOULD** be redacted from diagnostics
-that do not need the complete address.
+**PROTO-ADDR-004** — For the same platform, `endpoint_name`, `token`, and OS
+temporary directory, all five SDKs **MUST** produce byte-identical addresses.
+The token is part of the address and access-control model. It **SHOULD** be
+redacted from diagnostics that do not need the complete address.
 
 #### 2.1.1 Canonical address examples
 
-The following examples are reproducible. Byte counts are UTF-8 byte counts;
-all characters shown are ASCII. Their deterministic tokens are fixtures for
-address conformance and **MUST NOT** be reused as production access tokens.
+**PROTO-ADDR-005** — The following examples are reproducible. Byte counts are
+UTF-8 byte counts; all characters shown are ASCII. Their deterministic tokens
+are fixtures for address conformance and **MUST NOT** be reused as production
+access tokens.
 
 | Case | `endpoint_name` | `token` | SHA-256 prefix (`digest`) |
 |---|---|---|---|
@@ -152,21 +155,21 @@ It produces this exactly 103-byte pathname:
 /private/var/folders/aa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/T/yuumi-c3da2f7decb02b7a24e054711453a85c.sock
 ```
 
-Adding one `b` makes the directory 60 bytes and the complete pathname 104
-bytes. Go **MUST** fail before opening the listener, and every engine **MUST**
-fail before dialing; the terminating NUL would otherwise require byte 105 of
-the 104-byte `sun_path` field.
+**PROTO-ADDR-006** — Adding one `b` makes the directory 60 bytes and the
+complete pathname 104 bytes. Go **MUST** fail before opening the listener, and
+every engine **MUST** fail before dialing; the terminating NUL would otherwise
+require byte 105 of the 104-byte `sun_path` field.
 
 ### 2.2 Endpoint presence and stale endpoints
 
 Endpoint presence is not evidence that a Go listener is alive. Liveness is
 tested only by attempting a connection.
 
-- A successful connection means the endpoint is live. A second Go listener
+- **PROTO-ENDP-001** — A successful connection means the endpoint is live. A second Go listener
   **MUST NOT** replace it.
-- A transient condition such as a busy Named Pipe **MUST NOT** be classified as
+- **PROTO-ENDP-002** — A transient condition such as a busy Named Pipe **MUST NOT** be classified as
   stale while a listener instance can still accept connections.
-- If the connection is refused because no live listener owns the endpoint, the
+- **PROTO-ENDP-003** — If the connection is refused because no live listener owns the endpoint, the
   endpoint is stale and Go **MUST** remove or release it before recreating it.
 - On Unix, removal means unlinking the stale socket node after the refused
   connection and before binding.
@@ -175,7 +178,8 @@ tested only by attempting a connection.
   fresh listener with the same canonical name; there is no filesystem node to
   unlink.
 
-Go **MUST** remove or release its endpoint during orderly listener shutdown.
+**PROTO-ENDP-004** — Go **MUST** remove or release its endpoint during orderly
+listener shutdown.
 
 ---
 
@@ -197,12 +201,12 @@ Go client and listener                  Engine dialer
     |--- Close -------------------------->|
 ```
 
-Go **MUST** send the handshake after accepting the engine candidate. Listener
-ownership does not reverse the handshake direction.
+**PROTO-CONN-001** — Go **MUST** send the handshake after accepting the engine
+candidate. Listener ownership does not reverse the handshake direction.
 
-The engine **MUST** send the session Control message immediately after the ACK
-and before any other frame. The client **MUST** receive it before treating the
-session as ready for application traffic.
+**PROTO-CONN-002** — The engine **MUST** send the session Control message
+immediately after the ACK and before any other frame. The client **MUST**
+receive it before treating the session as ready for application traffic.
 
 Handshake rejection is signalled by closing without an ACK. A peer that has not
 completed the handshake cannot receive a framed Control error.
@@ -230,9 +234,10 @@ Offset  Size  Field
 | `EncodingCaps` | Encodings supported by the client |
 | `Capabilities` | 24-bit client capability mask |
 
-The engine **MUST** read exactly 16 bytes before parsing the handshake. It
-**MUST** reject an invalid magic or protocol version without sending an ACK.
-The handshake PID is identifying metadata, not primary authentication.
+**PROTO-HS-001** — The engine **MUST** read exactly 16 bytes before parsing the
+handshake. It **MUST** reject an invalid magic or protocol version without
+sending an ACK. The handshake PID is identifying metadata, not primary
+authentication.
 
 ### 4.1 Encoding negotiation
 
@@ -242,8 +247,8 @@ The handshake PID is identifying metadata, not primary authentication.
 | 1 | `0x02` | MessagePack |
 | 2-7 | - | Reserved; send as zero |
 
-The engine selects exactly one encoding from the intersection of the client
-mask and the engine mask. A zero intersection is
+**PROTO-HS-002** — The engine selects exactly one encoding from the
+intersection of the client mask and the engine mask. A zero intersection is
 `ERR_ENCODING_UNSUPPORTED (415)` and the engine **MUST** close without an ACK.
 
 ---
@@ -265,11 +270,11 @@ The client sends its supported mask in the handshake. The engine computes:
 negotiated_capabilities = client_capabilities & engine_capabilities
 ```
 
-The engine returns that exact intersection in ACK bytes 1-3. A capability may
-be used only when its bit is set in the negotiated mask. A client **MUST** reject
-an ACK that sets a capability it did not advertise. Unknown or reserved bits
-received in the handshake are excluded from the intersection and otherwise
-ignored.
+**PROTO-CAP-001** — The engine returns that exact intersection in ACK bytes
+1-3. A capability may be used only when its bit is set in the negotiated mask.
+A client **MUST** reject an ACK that sets a capability it did not advertise.
+Unknown or reserved bits received in the handshake are excluded from the
+intersection and otherwise ignored.
 
 Fragmentation, sessions, channels, and Control messages are baseline protocol
 version 1 behaviour and do not have capability bits.
@@ -290,14 +295,15 @@ Offset  Size  Field
 for MessagePack. `NegotiatedCapabilities` is the Big-Endian 24-bit intersection
 defined above.
 
-An ACK with an unadvertised encoding, multiple encoding bits, or capabilities
-outside the client mask is a protocol violation. The client **MUST** close.
+**PROTO-ACK-001** — An ACK with an unadvertised encoding, multiple encoding
+bits, or capabilities outside the client mask is a protocol violation. The
+client **MUST** close.
 
 ---
 
 ## 7. Sessions
 
-Each Go listener permits exactly one established engine session at a time. This
+**PROTO-SESS-001** — Each Go listener permits exactly one established engine session at a time. This
 one-to-one limit is mandatory and is not configurable or negotiated on the
 wire. Go **MUST** accept and evaluate one engine candidate at a time, and only
 while no session is established. A candidate becomes the established session
@@ -328,8 +334,8 @@ sends:
 { "type": "session", "session_id": "01J4Y7M9K2P6V3N8Q5R0T1WXYZ" }
 ```
 
-`session_id` is a non-empty printable ASCII string of at most 128 bytes. Clients
-**MUST** treat it as opaque.
+**PROTO-SESS-002** — `session_id` is a non-empty printable ASCII string of at
+most 128 bytes. Clients **MUST** treat it as opaque.
 
 ### 7.2 Reconnection
 
@@ -341,11 +347,11 @@ A connection established after a disconnect is a new session, not a continuation
 - the engine assigns a new `session_id`;
 - both endpoints replace their local `epoch` generation.
 
-`epoch` is opaque local SDK state and is not transmitted. Each endpoint
-**MUST** replace it for every successfully established session. A request,
-responder, timeout, callback, or send operation created in an earlier epoch
-**MUST NOT** act on a later connection. An SDK **MUST NOT** use old negotiated
-state or buffers after close.
+**PROTO-EPOCH-001** — `epoch` is opaque local SDK state and is not transmitted.
+Each endpoint **MUST** replace it for every successfully established session. A
+request, responder, timeout, callback, or send operation created in an earlier
+epoch **MUST NOT** act on a later connection. An SDK **MUST NOT** use old
+negotiated state or buffers after close.
 
 ---
 
@@ -361,9 +367,9 @@ Offset  Size  Field
 6       N     Payload
 ```
 
-`PayloadLength` includes every prefix required by active flags. A receiver
-**MUST** validate the declared length before allocating or reading a payload
-buffer.
+**PROTO-FRAME-001** — `PayloadLength` includes every prefix required by active
+flags. A receiver **MUST** validate the declared length before allocating or
+reading a payload buffer.
 
 The maximum frame payload and maximum reassembled message data are both
 16,777,216 bytes (16 MiB). Prefixes count toward the frame limit. Exceeding
@@ -402,20 +408,23 @@ Channel state is never shared across sessions.
 Correlation may be used only when `CAP_CORRELATION` was negotiated.
 
 When `FLAG_CORRELATED` is set, a Big-Endian `uint32 correlation_id` prefixes the
-message data. The requester allocates identifiers incrementally within its
-session. Wrap from `0xFFFFFFFF` to `0x00000000` is allowed, but an identifier
-**MUST NOT** be reused while a request with that identifier remains pending.
+message data. **PROTO-CORR-001** — The requester allocates identifiers
+incrementally within its session. Wrap from `0xFFFFFFFF` to `0x00000000` is
+allowed, but an identifier **MUST NOT** be reused while a request with that
+identifier remains pending.
 
-A response, including an application-level error response, **MUST** set
-`FLAG_CORRELATED` and repeat the request `correlation_id`. Protocol-level
-Control errors are connection or session errors, not application responses.
+**PROTO-CORR-002** — A response, including an application-level error response,
+**MUST** set `FLAG_CORRELATED` and repeat the request `correlation_id`.
+Protocol-level Control errors are connection or session errors, not application
+responses.
 
 Without the flag, no correlation prefix is present and the message is
 fire-and-forget. Logs, heartbeats, and uncorrelated streams retain this form.
 
 SDK request timeouts are configurable and not negotiated. On timeout, the
-pending request fails locally and its identifier is released. A late unmatched
-response **MUST NOT** be delivered as the response to another request.
+pending request fails locally and its identifier is released.
+**PROTO-CORR-003** — A late unmatched response **MUST NOT** be delivered as the
+response to another request.
 
 ### 10.1 Prefix order
 
@@ -442,9 +451,9 @@ without depending on a previous frame.
 
 ## 11. Fragmentation
 
-The sender allocates a Big-Endian `uint32 fragment_id`. Wrap is allowed, but an
-identifier **MUST NOT** be reused while its previous sequence is active in the
-same session.
+**PROTO-FRAG-001** — The sender allocates a Big-Endian `uint32 fragment_id`.
+Wrap is allowed, but an identifier **MUST NOT** be reused while its previous
+sequence is active in the same session.
 
 The receiver groups frames by session, channel, and `fragment_id`, removes the
 per-frame prefixes, and concatenates fragment data in stream order. A frame with
@@ -490,8 +499,8 @@ Any valid received frame resets the receiver liveness counter.
 { "type": "pong", "seq": 42 }
 ```
 
-The receiver **MUST** return a pong with the same `seq` within its configured
-heartbeat timeout.
+**PROTO-CTRL-001** — The receiver **MUST** return a pong with the same `seq`
+within its configured heartbeat timeout.
 
 ### 12.3 Protocol error
 
@@ -499,13 +508,14 @@ heartbeat timeout.
 { "type": "error", "code": 413, "message": "payload exceeds 16 MiB" }
 ```
 
-After session establishment, an endpoint that can safely frame an error **MUST**
-send this message before closing for a fatal protocol error and close
-immediately afterward. The peer **MUST NOT** send more frames after receiving
-it. Handshake failures close without ACK and without a Control frame.
+**PROTO-CTRL-002** — After session establishment, an endpoint that can safely
+frame an error **MUST** send this message before closing for a fatal protocol
+error and close immediately afterward. The peer **MUST NOT** send more frames
+after receiving it. Handshake failures close without ACK and without a Control
+frame.
 
-Unknown valid Control `type` values **MUST** be ignored. This rule does not make
-malformed JSON valid.
+**PROTO-CTRL-003** — Unknown valid Control `type` values **MUST** be ignored.
+This rule does not make malformed JSON valid.
 
 ---
 
@@ -557,11 +567,11 @@ local processes guessing it.
 
 This does not replace OS access controls:
 
-- on Linux and macOS, Go **MUST** create the socket node with mode `0600` for
+- **PROTO-SEC-001** — on Linux and macOS, Go **MUST** create the socket node with mode `0600` for
   the owning user;
-- on Windows, Go **MUST** apply a Named Pipe ACL restricted to the intended
+- **PROTO-SEC-002** — on Windows, Go **MUST** apply a Named Pipe ACL restricted to the intended
   local user and **MUST** reject remote pipe clients;
-- Go **MUST** put the token and endpoint permissions in place before accepting
+- **PROTO-SEC-003** — Go **MUST** put the token and endpoint permissions in place before accepting
   traffic.
 
 The handshake PID identifies the Go process and is not authentication. If the
@@ -569,7 +579,7 @@ OS exposes trustworthy server credentials, the engine **SHOULD** compare them
 with the handshake PID. An engine mismatch closes without ACK and surfaces
 `ERR_PID_MISMATCH (402)`.
 
-Go **MAY** configure an expected engine PID as an additional candidate check
+**PROTO-SEC-004** — Go **MAY** configure an expected engine PID as an additional candidate check
 when the OS exposes trustworthy client credentials. A mismatch closes the
 candidate before handshake, surfaces `ERR_PID_MISMATCH (402)` locally, and
 **MUST NOT** consume the session slot.
@@ -588,8 +598,8 @@ Yuumi has three independent version scales.
 
 The current protocol version is `1`. It is not semantic versioning and has no
 alpha, beta, release-candidate, or final value on the wire. The specification
-itself is currently alpha. Library versions are visible metadata and
-**MUST NOT** be used to accept or reject a connection.
+itself is currently alpha. **PROTO-VER-001** — Library versions are visible
+metadata and **MUST NOT** be used to accept or reject a connection.
 
 Protocol revisions are recorded in `CHANGELOG.md` as dated, git-style entries
 describing what changed and why. Additive features use capabilities; they do not
@@ -609,11 +619,12 @@ Conformance is established by executing canonical vectors in
 has a same-basename `.json` annotation containing its exact hexadecimal bytes,
 field offsets, context, and expected outcome.
 
-The Go client uses the numbered
-[`Client Conformance Suite`](./CLIENT_CONFORMANCE.md). The C++, Python, Rust,
-and TypeScript engines use the numbered
-[`Engine Conformance Suite`](./ENGINE_CONFORMANCE.md). Those suites are the
-role-specific acceptance criteria for all five SDKs.
+The Go client uses the
+[`Client Conformance Contract`](./CLIENT_CONFORMANCE.md). The C++, Python,
+Rust, and TypeScript engines use the common
+[`Engine Conformance Contract`](./ENGINE_CONFORMANCE.md). Their machine-readable
+case inventory is [`conformance/manifest.json`](./conformance/manifest.json).
+Those contracts are the role-specific acceptance criteria for all five SDKs.
 
 ### Canonical test vectors
 
@@ -664,7 +675,12 @@ and rejects orphaned or missing annotations. Run:
 
 ```text
 python tools/vector_tool.py
+python tools/conformance_tool.py --self-test
 ```
+
+`tools/conformance_tool.py` validates unique stable IDs, exact normative
+coverage, case structure, vector references, platform completeness, dialer and
+listener roles, opaque payloads, and the mandatory-skip guard.
 
 ### Conformance checklist
 

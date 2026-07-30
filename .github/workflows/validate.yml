@@ -14,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate-vectors:
-    name: Validate test vectors
-    runs-on: ubuntu-latest
+  validate-contracts:
+    name: Validate contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -25,7 +29,14 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+
       - name: Validate exact canonical fixtures
-        run: python3 tools/vector_tool.py
+        run: python tools/vector_tool.py
+
+      - name: Validate conformance contracts and mandatory-skip guard
+        run: python tools/conformance_tool.py --self-test
 
 # creato: 2026-05-25 | Validate spec | yuumi-spec

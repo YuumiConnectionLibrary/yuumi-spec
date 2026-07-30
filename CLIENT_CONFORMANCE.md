@@ -1,204 +1,125 @@
-# Yuumi Client Conformance Suite
+# Yuumi Client Conformance Contract
 
 Status: **alpha**
 
 Wire protocol: **version `1`**
 
-This is the executable acceptance suite for the Go Client API. Every case is
-mandatory on Windows, Linux, and macOS unless it names one platform. The
+This is the executable acceptance contract for the Go client and listener. Its
 normative sources are [`PROTOCOL.md`](./PROTOCOL.md) and
-[`CLIENT_API.md`](./CLIENT_API.md); the contract wins on disagreement.
+[`CLIENT_API.md`](./CLIENT_API.md). If this document or the machine-readable
+manifest disagrees with either source, the normative source wins and the
+conformance artifact must be corrected.
+
+The complete case definitions are in
+[`conformance/manifest.json`](./conformance/manifest.json). The manifest does
+not define protocol behaviour. It identifies the normative requirements and
+canonical vectors exercised by each case and declares deterministic expected
+wire, API, cleanup, platform, and failure-evidence results.
 
 ---
 
-## 1. Harness
+## 1. Endpoint under test
 
-The harness uses a private engine dialer, never a public non-Go client. It can
-split reads/writes, send exact vectors, inspect endpoint protection, inject
-transport failures, observe allocation attempts, block application handlers,
-control deadlines without unbounded sleeps, and record state/event order.
+Every `CC-*` case tests `go_client_listener`:
 
-Existing handshake, ACK, Control, and frame vectors remain byte-identical.
-API-only cases below require no new wire fixtures.
+- Go validates configuration and derives the address before transport access;
+- Go creates, protects, probes, accepts on, and cleans up the endpoint;
+- the harness peer is a private engine dialer and is not a public non-Go client;
+- listening is distinct from an established session;
+- rejection of a candidate does not consume the single session slot; and
+- session loss returns the same Go object to listening without process spawn,
+  restart, discovery, or supervision.
 
----
-
-## 2. Construction, configuration, address, and endpoint
-
-1. **CC-001 — Invalid configuration has no side effects**
-   - Invalid required fields, negative options, reserved capabilities, and an
-     overlong Unix path fail in `NewClient` before probe, bind, unlink, handle,
-     goroutine, or timer creation.
-
-2. **CC-002 — Canonical address is byte-identical**
-   - Minimum/maximum fixtures reproduce documented Unix digests and Windows
-     pipe names without normalization, truncation, relocation, or fallback.
-
-3. **CC-003 — macOS byte budget is exact**
-   - The 103-byte fixture reaches `Open`; 104 bytes fails before endpoint use.
-
-4. **CC-004 — Open protects the platform listener before traffic**
-   - Unix uses stream socket mode `0600`; Windows uses a byte-stream Named Pipe,
-     intended-user ACL, remote rejection, and `Microsoft/go-winio`. `Open`
-     returns ready without waiting for an engine. TCP never appears.
-
-5. **CC-005 — Live endpoint is never replaced**
-   - A second client's `Open` reports `endpoint_live` and leaves the first
-     listener usable. A busy Named Pipe is live, not stale.
-
-6. **CC-006 — Stale cleanup requires proved refusal**
-   - Unix unlink happens only after refused liveness probe; Windows releases
-     handles and performs no filesystem unlink. Unrelated paths are unchanged.
-
-7. **CC-007 — Close deterministically releases ownership**
-   - From listening/connected, repeated `Close` releases candidates, session,
-     endpoint, timers, goroutines, queues, and waits. The address can be owned
-     by a new object, while the closed object cannot reopen.
+The harness can split stream reads and writes at every byte, inject transport
+and dispatch failures, observe attempted allocation and resource ownership,
+block application handlers, and advance bounded virtual deadlines. Harness
+seams are test-only and are not additions to the Client API.
 
 ---
 
-## 3. Admission and establishment
+## 2. Case structure
 
-8. **CC-008 — Go sends exact handshake after secure accept**
-   - A dialer receives no pre-accept traffic, then exact
-     `handshake_valid.bin` or `handshake_cap_correlation.bin` including Go PID.
+Each manifest case explicitly declares:
 
-9. **CC-009 — ACK and assignment establish one session**
-   - Exact ACK followed immediately by `control_session.bin` makes
-     `WaitConnected` and `OnConnected` observe the same immutable ready view.
+- stable case ID and covered normative requirement IDs;
+- endpoint under test;
+- preconditions;
+- canonical vectors and deterministic constructed input;
+- action;
+- expected wire result;
+- expected public API result;
+- expected cleanup;
+- applicable platforms and mandatory status; and
+- readable failure evidence.
 
-10. **CC-010 — Invalid candidates do not consume the slot**
-    - Short/invalid ACK, unoffered selection/capability, peer failure, and
-      `control_session_empty_id.bin` close only the candidate, emit typed
-      diagnostics without epoch, and admission later establishes a valid peer.
-
-11. **CC-011 — One established session is mandatory**
-    - A later dialer is refused/closed without handshake and cannot affect the
-      active epoch. After teardown, one new candidate may establish.
-
-12. **CC-012 — Wait cancellation differs from listener failure**
-    - Canceling one `WaitConnected` leaves client/admission usable. `Close`
-      wakes every waiter with `closed`; fatal accept failure closes the object
-      with `accept`, not an engine-disconnect success.
-
-13. **CC-013 — Optional PID remains an additional check**
-    - Nil, pointer-to-zero, match, and trustworthy-credential mismatch are
-      distinct. Mismatch reports `402`, sends no handshake, and leaves the slot.
+Application payloads are opaque. A case may select a protocol channel and a
+scalar, list, map, JSON value, or MessagePack value, but it cannot require an
+application envelope or fields named `cmd` or `data`.
 
 ---
 
-## 4. Wire, operations, and epochs
+## 3. Canonical Client cases
 
-14. **CC-014 — Version 1 vectors remain unchanged**
-    - Negotiation, channels, Control JSON, correlation, fragmentation, payload
-      bounds, heartbeat, ping/pong, and statuses pass every applicable fixture.
-
-15. **CC-015 — Declared length is checked before allocation**
-    - `frame_oversized.bin` reports `413`, safely sends `control_error.bin`, and
-      closes without reading/allocating the declared body.
-
-16. **CC-016 — Inbound paths never overlap**
-    - Replies reach only `Request`, unsolicited complete messages only
-      `Messages`, and Control only SDK state/callbacks. Partial or invalid input
-      never becomes data or success.
-
-17. **CC-017 — Sends are directional, ordered, and explicit**
-    - Only Command/Data are public. Sequential successful sends preserve order
-      and selected encoding. Control, wrong direction, serialization, and size
-      failures write no invalid bytes.
-
-18. **CC-018 — Requests are session-scoped**
-    - Capability gating, concurrent unique IDs, timeout/context precedence, ID
-      release, and late-reply discard are verified without routing overlap.
-
-19. **CC-019 — Replacement resets generation state**
-    - Disconnect fails requests, clears partial work, and returns to listening.
-      The next handshake uses a new session ID and strictly greater local epoch.
-
-20. **CC-020 — Stale work cannot act on replacement**
-    - Old sends, responders, callbacks, timeouts, fragments, correlations, and
-      queued operations emit/write nothing and cannot mutate or close new epoch.
-
-21. **CC-021 — Public boundary has no lifecycle policy**
-    - Surface inspection finds `NewClient`, `Open`, session operations, events,
-      and close, but no required Runner, reconnect policy, spawn/discovery,
-      executable/log capture, application envelope, or non-Go public client.
-
----
-
-## 5. Task 03b API, state, dispatch, and error cases
-
-22. **CC-022 — Construction is transport-free**
-    - Successful `NewClient` creates no handle, endpoint, goroutine, timer, or
-      callback and copies configuration so caller mutation has no effect.
-
-23. **CC-023 — Optional zero values are normative**
-    - Zero options produce heartbeat 30 s/3, request timeout 30 s, message and
-      callback capacity 64, enabled heartbeat, and absent expected PID.
-
-24. **CC-024 — GenerateToken and Decode boundaries are typed**
-    - Generated tokens contain 128 secure random bits encoded as 32 lowercase
-      hex; invalid Decode destinations and codec conversion failures are errors.
-
-25. **CC-025 — Exact state machine and permanent close**
-    - Observe new/listening/connected/listening and closing/closed transitions;
-      failed `Open` cleans back to new, duplicate `Open` fails, and closed never
-      reopens. Epoch starts above zero and increases on every establishment.
-
-26. **CC-026 — Platform close has no leaks**
-    - On each OS, close during accept, handshake, established reads/writes,
-      callback wait, and heartbeat unblocks all work within bounded deadlines.
-
-27. **CC-027 — Connected-state candidates are isolated**
-    - Multiple extra dials receive no handshake/session and do not change
-      callbacks, epoch, negotiated values, liveness, or the established stream.
-
-28. **CC-028 — Disconnect and Close drain differently**
-    - Disconnect preserves already accepted old-epoch events in order, fails
-      requests with `session_closed`, emits disconnected, then permits next
-      connected event. Close cancels work with `closed` and closes `Messages`.
-
-29. **CC-029 — Every stale authority is isolated**
-    - Independently exercise send, request completion, timer, fragment,
-      correlation, queued event, and callback from an old epoch against a live
-      replacement and observe no replacement effect.
-
-30. **CC-030 — Queue capacity boundary is exact**
-    - Default capacity accepts 64 pending entries and configured positive N
-      accepts N for both Messages and callbacks; the next entry overflows.
-
-31. **CC-031 — Backpressure is terminal and loss is not hidden**
-    - Full message or callback queue never blocks IPC indefinitely and never
-      drops then continues. It records `backpressure`, fails requests, closes
-      that epoch, uses reserved terminal delivery, and returns to listening.
-
-32. **CC-032 — Callback order, panic, locks, and close are safe**
-    - Same-epoch callbacks do not overlap and follow connected/events/
-      disconnected order. Public methods proceed while a callback is blocked.
-      Panic becomes `application`; OnError panic reports once without recursion.
-      Close from inside and outside a callback follows the documented rule.
-
-33. **CC-033 — IPC progresses independently of handlers**
-    - Below capacity, blocked handlers do not prevent reads, writes, heartbeat,
-      fragment/request deadlines, candidate rejection, or close progress.
-
-34. **CC-034 — Error kinds are distinguishable**
-    - Construct every `CLI-ERR-*` condition and verify `errors.Is`/`errors.As`,
-      phase, cause, optional epoch, single terminal report, and no success shape.
-
----
-
-## 6. Normative coverage
-
-| Contract requirements | Cases |
+| ID | Acceptance boundary |
 |---|---|
-| `CLI-ROLE-*` | CC-004 through CC-007, CC-021, CC-022 |
-| `CLI-API-*`, `CLI-CFG-*` | CC-001, CC-007 through CC-009, CC-016 through CC-018, CC-022 through CC-024 |
-| `CLI-STATE-*` | CC-007, CC-009 through CC-012, CC-019, CC-020, CC-025 |
-| `CLI-ENDP-*` | CC-001 through CC-007, CC-026 |
-| `CLI-ADMIT-*` | CC-008 through CC-013, CC-027 |
-| `CLI-SESS-*` | CC-014 through CC-020, CC-028, CC-029 |
-| `CLI-DISP-*` | CC-016, CC-030 through CC-033 |
-| `CLI-ERR-*` | CC-001, CC-005 through CC-020, CC-031, CC-032, CC-034 |
+| `CC-001` | Configuration and address validation have no side effects |
+| `CC-002` | Construction, token generation, and `Decode` are pure and typed |
+| `CC-003` | `Open` protects the listener before traffic |
+| `CC-004` | Endpoint liveness and stale cleanup are deterministic |
+| `CC-005` | `listening` and `connected` are distinct states |
+| `CC-006` | Invalid candidates do not consume the slot |
+| `CC-007` | Exactly one session is established |
+| `CC-008` | Go sends the exact handshake and validates ACK plus assignment |
+| `CC-009` | Encoding and capability negotiation are exact |
+| `CC-010` | Frames, bounds, fragmentation, and Control decode defensively |
+| `CC-011` | Correlation and messages route without overlap |
+| `CC-012` | Heartbeat and IPC progress while handlers are slow |
+| `CC-013` | Bounded queues fail terminally on backpressure |
+| `CC-014` | Session loss returns to listening without process policy |
+| `CC-015` | `Close` is permanent, idempotent, and leak-free |
+| `CC-016` | A new epoch rejects every stale authority |
+| `CC-017` | The executable public surface is client-only and schema-free |
+| `CC-018` | Every Client error kind is distinguishable |
 
-No case tests process lifecycle. No wire vector changes for Task 03b.
+The table is a human index. The manifest contains the executable inputs and
+oracles; `tools/conformance_tool.py --coverage` emits the exact flat mapping
+from every `PROTO-*` and `CLI-*` requirement to one or more cases.
+
+---
+
+## 4. Platform execution
+
+Every Client case is mandatory on all three platforms. Platform-specific
+assertions retain the same logical case ID and change only their native probe:
+
+| Platform | Required evidence |
+|---|---|
+| Windows | Local and CI execution; byte-stream Named Pipe, intended-user ACL, remote rejection, handle cleanup |
+| Linux | WSL and CI execution; Unix domain stream socket, mode `0600`, refused-stale unlink, node cleanup |
+| macOS | CI during development and final real-hardware run; Unix socket security and exact 103/104-byte pathname boundary |
+
+A required case cannot be marked skipped. Harness results use `pass`, `fail`,
+or `skip`; `tools/conformance_tool.py --results <file>` rejects `skip` for any
+mandatory case and rejects missing results. `--self-test` proves that guard by
+feeding it a synthetic mandatory skip and requiring rejection.
+
+---
+
+## 5. Validation
+
+Run:
+
+```text
+python tools/vector_tool.py
+python tools/conformance_tool.py --self-test
+python tools/conformance_tool.py --coverage
+```
+
+The checks fail for duplicate IDs, missing case fields, an unknown requirement,
+an uncovered normative ID, a missing vector or annotation, a non-dialer Engine
+endpoint, a non-listener Client endpoint, an omitted platform, a non-mandatory
+case, a mandatory skip, or a non-opaque/application-shaped payload contract.
+
+Task 15 supplies the SDK-specific executable harnesses and result files. This
+contract supplies their deterministic inventory and oracles; it does not
+implement SDKs, benchmarks, process lifecycle, or application schemas.
