@@ -72,7 +72,7 @@ language-native equivalents:
 | **ENG-API-002** `connect` | Performs one dial and handshake attempt. It succeeds only after session assignment has been written and the session is usable; otherwise it returns one typed error. It never retries automatically. |
 | **ENG-API-003** `close` | Rejects new work, tears down the attempt or session, releases all engine-owned resources, and is idempotent. |
 | **ENG-API-004** `send` | Sends an opaque payload on an engine-output application channel under the current epoch. Control traffic is not public. |
-| **ENG-API-005** `respond` | Uses the responder attached to a correlated inbound message, repeats its channel and correlation ID, is valid at most once, and requires negotiated `CAP_CORRELATION`. |
+| **ENG-API-005** `respond` | Uses the responder attached to a correlated inbound message, sends the response on `Data`, repeats the correlation ID, is valid at most once, and requires negotiated `CAP_CORRELATION`. A correlated inbound `Command` therefore produces a correlated `Data` response; inbound `Data` also responds on `Data`. |
 | **ENG-API-006** events | Makes connected, message, heartbeat, error, and disconnected events observable. Pull streams, iterators, channels, or callbacks are valid idiomatic forms. |
 | **ENG-API-007** session view | Exposes immutable `session_id`, opaque local epoch, selected encoding, and negotiated capabilities while connected. |
 | **ENG-API-008** terminal result | Makes the terminal reason for an established session observable even if event delivery itself caused termination. |

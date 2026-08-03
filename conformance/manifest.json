@@ -167,7 +167,7 @@
     {
       "id": "EC-014", "contract": "engine", "title": "Correlation preserves responder authority", "requirements": ["ENG-API-005", "ENG-SESS-002", "ENG-SESS-003", "PROTO-CORR-001", "PROTO-CORR-002", "PROTO-CORR-003"], "endpoint_under_test": "engine_dialer",
       "preconditions": "Correlation/baseline sessions and pending-ID probes.", "input": {"vectors": ["frame_correlated_request.bin", "frame_correlated_response.bin", "frame_correlated_not_negotiated.bin"], "constructed": "Success, application error, double response, reuse, timeout, late reply, unnegotiated use.", "payload_schema": "opaque"}, "action": "Receive, respond, exercise lifecycle, reconnect for stale tests.",
-      "wire_result": "Response repeats channel/ID; invalid or stale writes nothing/closes per protocol.", "api_result": "Responder only correlated, single-use, epoch-bound.", "cleanup": "Release IDs/responders; close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "ID lifecycle, calls, frame hex, epoch."
+      "wire_result": "Response uses Data and repeats the correlation ID; invalid or stale writes nothing/closes per protocol.", "api_result": "Responder only correlated, single-use, epoch-bound.", "cleanup": "Release IDs/responders; close.", "platforms": ["windows", "linux", "macos"], "mandatory": true, "failure_evidence": "ID lifecycle, calls, frame hex, epoch."
     },
     {
       "id": "EC-015", "contract": "engine", "title": "Public sends are directional, ordered, and await writes", "requirements": ["ENG-API-004", "ENG-API-009", "ENG-API-010", "ENG-API-011", "ENG-API-012"], "endpoint_under_test": "engine_dialer",

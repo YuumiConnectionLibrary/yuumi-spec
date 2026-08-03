@@ -4,6 +4,12 @@ Protocol revisions are recorded as dated change entries. The protocol version
 changes only for incompatible wire breaks; additive features are negotiated
 through capabilities.
 
+## 2026-08-03
+
+- Clarified that an engine responder always writes the correlated application
+  response on `Data` while repeating the request correlation ID, matching the
+  frozen Command-to-Data response vector and engine output-channel rules.
+
 ## 2026-07-30
 
 - Replaced the old topology suite with distinct executable Client-listener and
