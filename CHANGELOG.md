@@ -4,6 +4,15 @@ Protocol revisions are recorded as dated change entries. The protocol version
 changes only for incompatible wire breaks; additive features are negotiated
 through capabilities.
 
+## 2026-08-05
+
+- Added the single-SDK conformance and interoperability harness with a
+  versioned machine-readable report, strict exit codes, owned-process cleanup,
+  and mandatory completeness validation.
+- Added autonomous spec validation on the three supported operating systems,
+  immutable revision reporting, and negative gate proofs while leaving every
+  SDK matrix in its owning repository.
+
 ## 2026-08-03
 
 - Clarified that an engine responder always writes the correlated application

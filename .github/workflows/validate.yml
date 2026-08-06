@@ -1,42 +1,102 @@
-name: Validate spec
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: spec-${{ github.ref }}
+  group: spec-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  YUUMI_SPEC_SHA: ${{ github.sha }}
+  PYTHON_VERSION: 3.x
+
 jobs:
-  validate-contracts:
-    name: Validate contracts (${{ matrix.os }})
+  validate:
+    name: Spec ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
-
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Check out specification
+        uses: actions/checkout@v6
         with:
+          path: yuumi-spec
           fetch-depth: 1
           persist-credentials: false
-
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - name: Set up latest stable Python
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate pinned spec, vectors, manifests, schema, and tests
+        run: >-
+          python yuumi-spec/conformance/spec_ci.py
+          --spec-sha ${{ env.YUUMI_SPEC_SHA }}
+          --output-dir artifacts/spec
+      - name: Record toolchain and cleanup diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/spec -Force | Out-Null
+          "spec_sha=$env:YUUMI_SPEC_SHA" | Out-File artifacts/spec/toolchains.txt -Encoding utf8
+          python --version 2>&1 | Out-File artifacts/spec/toolchains.txt -Encoding utf8 -Append
+          git -C yuumi-spec rev-parse HEAD | Out-File artifacts/spec/toolchains.txt -Encoding utf8 -Append
+      - name: Upload specification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: yuumi-spec-${{ matrix.os }}-${{ env.YUUMI_SPEC_SHA }}
+          path: artifacts/spec
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Validate exact canonical fixtures
-        run: python tools/vector_tool.py
-
-      - name: Validate conformance contracts and mandatory-skip guard
-        run: python tools/conformance_tool.py --self-test
-
-# creato: 2026-05-25 | Validate spec | yuumi-spec
+  negative-gates:
+    name: Negative gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out specification
+        uses: actions/checkout@v6
+        with:
+          path: yuumi-spec
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up latest stable Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Prove failure, skip, incomplete report, and cleanup gates
+        run: python -m unittest discover -s yuumi-spec/conformance -p 'test_*.py' -v
+      - name: Prove report completeness gate
+        run: python yuumi-spec/conformance/report_tool.py --self-test
+      - name: Prove an incorrect spec SHA fails
+        shell: bash
+        run: |
+          set +e
+          python yuumi-spec/conformance/spec_ci.py \
+            --spec-sha 0000000000000000000000000000000000000000 \
+            --output-dir artifacts/wrong-sha
+          status=$?
+          set -e
+          if [[ $status -ne 2 ]]; then
+            echo "ERROR: wrong SHA returned $status instead of 2"
+            exit 1
+          fi
+      - name: Upload negative-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: yuumi-negative-gates-${{ env.YUUMI_SPEC_SHA }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14

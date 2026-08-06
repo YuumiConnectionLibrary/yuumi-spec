@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "INT-001",
+      "test": "session_payload_correlation_fragmentation_and_limit",
+      "title": "Session negotiation, opaque payloads, correlation, fragmentation, and the payload limit"
+    },
+    {
+      "id": "INT-002",
+      "test": "heartbeat_progresses_during_slow_handler",
+      "title": "Heartbeat and IPC progress while an application handler is slow"
+    },
+    {
+      "id": "INT-003",
+      "test": "queue_saturation_is_terminal",
+      "title": "Queue saturation is terminal and cleanup restores endpoint reuse"
+    },
+    {
+      "id": "INT-004",
+      "test": "disconnect_reconnect_epoch_and_stale_authority",
+      "title": "Client disconnect, reconnection, epoch replacement, and stale authority rejection"
+    },
+    {
+      "id": "INT-005",
+      "test": "timeout_fragment_stale_and_responder_reuse",
+      "title": "Timeout, stale fragment, responder reuse, and typed send rejection"
+    },
+    {
+      "id": "INT-006",
+      "test": "oversized_declaration_is_rejected",
+      "title": "Oversized declarations are rejected before payload allocation"
+    },
+    {
+      "id": "INT-007",
+      "test": "engine_disconnect_is_observable",
+      "title": "Engine disconnect is observable and cleanup restores endpoint reuse"
+    }
+  ]
+}

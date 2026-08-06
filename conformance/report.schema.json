@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/YuumiConnectionLibrary/yuumi-spec/conformance/report.schema.json",
+  "title": "Yuumi conformance report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "started_at",
+    "duration_ms",
+    "platform",
+    "architecture",
+    "spec_sha",
+    "repositories",
+    "toolchains",
+    "expected_checks",
+    "results",
+    "cleanup",
+    "summary",
+    "complete"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "started_at": {"type": "string", "format": "date-time"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "platform": {"enum": ["windows", "linux", "macos"]},
+    "architecture": {"type": "string", "minLength": 1},
+    "spec_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "repositories": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "null"]}
+    },
+    "toolchains": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "null"]}
+    },
+    "expected_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sdk", "platform", "stage", "case"],
+        "properties": {
+          "sdk": {"type": "string"},
+          "platform": {"enum": ["windows", "linux", "macos"]},
+          "stage": {"enum": ["conformance", "interop"]},
+          "case": {"type": "string"}
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sdk", "platform", "stage", "case", "status", "duration_ms", "log"],
+        "properties": {
+          "sdk": {"type": "string"},
+          "platform": {"enum": ["windows", "linux", "macos"]},
+          "stage": {"enum": ["conformance", "interop"]},
+          "case": {"type": "string"},
+          "status": {"enum": ["pass", "fail", "skip", "not-run"]},
+          "error_code": {"type": ["string", "null"]},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "log": {"type": "string"}
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "required": ["status", "diagnostics"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "diagnostics": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["pass", "fail", "skip", "not-run", "total"],
+      "properties": {
+        "pass": {"type": "integer", "minimum": 0},
+        "fail": {"type": "integer", "minimum": 0},
+        "skip": {"type": "integer", "minimum": 0},
+        "not-run": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "complete": {"type": "boolean"}
+  }
+}

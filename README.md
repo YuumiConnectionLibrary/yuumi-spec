@@ -120,7 +120,7 @@ Full specification → [`PROTOCOL.md`](./PROTOCOL.md)
 |---|---|---|---|
 | **Go** | [yuumi](https://github.com/YuumiConnectionLibrary/yuumi) | Logical client + listener | `go get github.com/YuumiConnectionLibrary/yuumi` |
 | **C++23** | [yuumi-cpp](https://github.com/YuumiConnectionLibrary/yuumi-cpp) | Engine + dialer | CMake + vcpkg |
-| **Python 3.11+** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Engine + dialer | `pip install yuumi-py` |
+| **Python** | [yuumi-py](https://github.com/YuumiConnectionLibrary/yuumi-py) | Engine + dialer | `pip install yuumi-py` |
 | **Rust** | [yuumi-rs](https://github.com/YuumiConnectionLibrary/yuumi-rs) | Engine + dialer | `cargo add yuumi` *(planned)* |
 | **TypeScript** | [yuumi-ts](https://github.com/YuumiConnectionLibrary/yuumi-ts) | Engine + dialer | `npm install yuumi` *(planned)* |
 
@@ -203,3 +203,7 @@ uses its own independent library semver.
 ## Issues
 
 Questions about the protocol specification? [Open an issue](https://github.com/YuumiConnectionLibrary/yuumi-spec/issues) in this repository. For SDK-specific questions, open an issue in the relevant SDK repository.
+
+Organization CI ownership is documented in [`CI.md`](CI.md). The executable
+cell report contract and local harness are documented in
+[`conformance/README.md`](conformance/README.md).
